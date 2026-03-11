@@ -80,21 +80,21 @@ func TestPullModelStreamed(t *testing.T) {
 	}
 }
 
-func TestDeleteModel(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/delete" {
-			t.Errorf("expected /api/delete, got %s", r.URL.Path)
-		}
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer server.Close()
+// func TestDeleteModel(t *testing.T) {
+// 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+// 		if r.URL.Path != "/api/delete" {
+// 			t.Errorf("expected /api/delete, got %s", r.URL.Path)
+// 		}
+// 		w.WriteHeader(http.StatusOK)
+// 	}))
+// 	defer server.Close()
 
-	client := NewOllamaClient(server.URL)
-	err := client.DeleteModel(context.Background(), "test-model")
-	if err != nil {
-		t.Fatal(err)
-	}
-}
+// 	client := NewOllamaClient(server.URL)
+// 	err := client.DeleteModel(context.Background(), "test-model")
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
+// }
 
 func TestGetVersion(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

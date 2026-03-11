@@ -10,6 +10,7 @@ import (
 
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/matst80/go-ollama-client/pkg/ai"
 	"github.com/matst80/go-ollama-client/pkg/ollama"
 	"github.com/matst80/go-ollama-client/pkg/tools"
 )
@@ -81,16 +82,16 @@ func main() {
 	registry := tools.NewRegistry()
 	registry.Register("run", &RunArgs{}, RunCommand)
 
-	req := ollama.NewChatRequest("qwen3.5:4b").
+	req := ai.NewChatRequest("qwen3.5:4b").
 		WithStreaming(true).
 		WithThinking(true).
-		WithOptions(&ollama.ModelOptions{
+		WithOptions(&ai.ModelOptions{
 			ContextWindowSize: 8192,
 		}).
 		WithTools(registry.GetTools())
 
 	// Initialize the new AgentSession with the request
-	agentSession := ollama.NewAgentSession(ctx, client, req, ollama.WithAccumulator())
+	agentSession := ai.NewAgentSession(ctx, client, req, ai.WithAccumulator())
 	defer agentSession.Stop()
 
 	// Tool executor
@@ -126,7 +127,7 @@ func main() {
 			}
 
 			// Deliver tool execution results back into the session
-			var resultMsgs []ollama.Message
+			var resultMsgs []ai.Message
 			for _, tr := range results {
 				msg := tr.ToResultMessage()
 				resultMsgs = append(resultMsgs, *msg)

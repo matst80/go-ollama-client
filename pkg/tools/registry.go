@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/matst80/go-ollama-client/pkg/ollama"
+	"github.com/matst80/go-ollama-client/pkg/ai"
 )
 
 // Registry maintains a list of tools that can be used by the model
 type Registry struct {
 	tools map[string]ToolDefinition
-	Tools []ollama.Function
+	Tools []ai.Function
 }
 
 // ToolDefinition represents a registered tool
@@ -66,8 +66,8 @@ func (r *Registry) Register(name string, args any, fn any) error {
 }
 
 // GetTools returns the tools in a format compatible with Ollama's API
-func (r *Registry) GetTools() []ollama.Tool {
-	var tools []ollama.Tool
+func (r *Registry) GetTools() []ai.Tool {
+	var tools []ai.Tool
 	for _, def := range r.tools {
 		// Since we don't have a tool-level description in Register,
 		// we use the name as a placeholder or could potentially
@@ -76,9 +76,9 @@ func (r *Registry) GetTools() []ollama.Tool {
 		if !def.Enabled {
 			continue
 		}
-		tools = append(tools, ollama.Tool{
-			Type: ollama.ToolTypeFunction,
-			Function: ollama.Function{
+		tools = append(tools, ai.Tool{
+			Type: ai.ToolTypeFunction,
+			Function: ai.Function{
 				Name:        def.Name,
 				Description: def.Name, // Default to name
 				Parameters:  def.parameters,

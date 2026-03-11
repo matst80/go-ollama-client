@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/matst80/go-ollama-client/pkg/ollama"
+	"github.com/matst80/go-ollama-client/pkg/ai"
 )
 
 // These tests exercise the various code paths in ToolExecutor/HandleCalls that
@@ -23,7 +23,7 @@ func TestToolExecutor_NoReturn(t *testing.T) {
 
 	executor := NewToolExecutor(registry)
 
-	calls := []ollama.ToolCall{
+	calls := []ai.ToolCall{
 		{
 			ID: "nr_1",
 			Function: struct {
@@ -69,7 +69,7 @@ func TestToolExecutor_UnmarshalError(t *testing.T) {
 	executor := NewToolExecutor(registry)
 
 	// Provide invalid JSON for the struct (wait expects a bool; provide string)
-	calls := []ollama.ToolCall{
+	calls := []ai.ToolCall{
 		{
 			ID: "bad_unmarshal",
 			Function: struct {
@@ -116,7 +116,7 @@ func TestToolExecutor_DuplicateAndEmptyID(t *testing.T) {
 
 	executor := NewToolExecutor(registry)
 
-	calls := []ollama.ToolCall{
+	calls := []ai.ToolCall{
 		// empty ID should be skipped entirely
 		{
 			ID: "",
@@ -181,7 +181,7 @@ func TestToolExecutor_UnknownToolNotIgnored(t *testing.T) {
 	// Do not register the tool; we want unknown-tool path
 	executor := NewToolExecutor(registry) // default: IgnoreUnknownToolCalls == false
 
-	calls := []ollama.ToolCall{
+	calls := []ai.ToolCall{
 		{
 			ID: "unknown1",
 			Function: struct {
@@ -224,7 +224,7 @@ func TestToolExecutor_MultipleReturnValues(t *testing.T) {
 
 	executor := NewToolExecutor(registry)
 
-	calls := []ollama.ToolCall{
+	calls := []ai.ToolCall{
 		{
 			ID: "multi1",
 			Function: struct {

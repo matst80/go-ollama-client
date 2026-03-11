@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/matst80/go-ollama-client/pkg/ollama"
+	"github.com/matst80/go-ollama-client/pkg/ai"
 )
 
 // ToolExecutor handles execution of tool calls and delivers the results into a
@@ -60,7 +60,7 @@ func (e *ToolExecutor) IsHandled(callID string) bool {
 // - If the call has no ID, an error is returned because responses cannot be correlated.
 // - Duplicate calls (same ID) are ignored and return an empty string with nil error.
 // - If delivery into the session fails, the result is still returned along with the delivery error.
-func (e *ToolExecutor) Call(call ollama.ToolCall) (string, error) {
+func (e *ToolExecutor) Call(call ai.ToolCall) (string, error) {
 	if call.ID != "" {
 		e.handledToolCalls[call.ID] = true
 	}
@@ -81,16 +81,16 @@ type ToolResult struct {
 	Err     error
 }
 
-func (r ToolResult) ToResultMessage() *ollama.Message {
+func (r ToolResult) ToResultMessage() *ai.Message {
 	if r.Err != nil {
-		return &ollama.Message{
-			Role:       ollama.MessageRoleTool,
+		return &ai.Message{
+			Role:       ai.MessageRoleTool,
 			ToolCallID: r.CallID,
 			Content:    fmt.Sprintf("error: %v", r.Err),
 		}
 	}
-	return &ollama.Message{
-		Role:       ollama.MessageRoleTool,
+	return &ai.Message{
+		Role:       ai.MessageRoleTool,
 		ToolCallID: r.CallID,
 		Content:    r.Content,
 	}
@@ -98,7 +98,7 @@ func (r ToolResult) ToResultMessage() *ollama.Message {
 
 // HandleCalls executes multiple calls by delegating to Call for each call.
 // It returns the first non-nil error encountered (typically delivery errors).
-func (e *ToolExecutor) HandleCalls(calls []ollama.ToolCall) ([]ToolResult, error) {
+func (e *ToolExecutor) HandleCalls(calls []ai.ToolCall) ([]ToolResult, error) {
 
 	res := make([]ToolResult, 0)
 	for _, c := range calls {

@@ -1,4 +1,4 @@
-package main
+package openrouter
 
 // Small CLI tool that generates Go types from the `components.schemas` section
 // of an OpenAPI v3 JSON file (e.g. `openrouterapi.json`).
