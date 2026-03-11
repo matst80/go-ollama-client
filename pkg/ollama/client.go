@@ -410,14 +410,9 @@ func (c *OllamaClient) PullModelStreamed(ctx context.Context, req PushPullReques
 		if len(cleanLine) == 0 {
 			continue
 		}
-
 		var pullResp StatusResponse
 		if err := json.Unmarshal(cleanLine, &pullResp); err != nil {
 			continue
-		}
-
-		if pullResp.Error != "" {
-			return fmt.Errorf("ollama error: %s", pullResp.Error)
 		}
 
 		ch <- &pullResp
@@ -497,15 +492,7 @@ func (c *OllamaClient) PushModelStreamed(ctx context.Context, req PushPullReques
 			continue
 		}
 
-		if statusResp.Error != "" {
-			return fmt.Errorf("ollama error: %s", statusResp.Error)
-		}
-
 		ch <- &statusResp
-
-		if statusResp.Status == "success" {
-			break
-		}
 	}
 	return nil
 }

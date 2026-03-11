@@ -1,4 +1,4 @@
-package ollama
+package ai
 
 import (
 	"context"
@@ -25,7 +25,7 @@ func NewAgentSession[T any](ctx context.Context, client ChatClientInterface, req
 	session := &AgentSession[T]{
 		Client: client,
 		Req:    req,
-		// We can't pre-allocate GlobalChan with T if we don't know the capacity needed, 
+		// We can't pre-allocate GlobalChan with T if we don't know the capacity needed,
 		// but 100 is a safe default for streaming.
 		GlobalChan: make(chan T, 100),
 		ctx:        ctx,

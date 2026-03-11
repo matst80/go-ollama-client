@@ -529,7 +529,7 @@ type StatusResponse struct {
 	Digest    string `json:"digest,omitempty"`
 	Total     int64  `json:"total,omitempty"`
 	Completed int64  `json:"completed,omitempty"`
-	Error     string `json:"error,omitempty"`
+	// Error     string `json:"error,omitempty"`
 }
 
 type DeleteRequest struct {

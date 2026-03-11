@@ -40,10 +40,10 @@ func TestPullModelStreamed(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/x-ndjson")
 		w.WriteHeader(http.StatusOK)
-		
+
 		responses := []StatusResponse{
 			{Status: "pulling manifest"},
-			{Status: "downloading digest", Total: 100, Completed: 50},
+			{Status: "downloading digest"},
 			{Status: "success"},
 		}
 
@@ -56,7 +56,7 @@ func TestPullModelStreamed(t *testing.T) {
 
 	client := NewOllamaClient(server.URL)
 	ch := make(chan *StatusResponse)
-	
+
 	go func() {
 		err := client.PullModelStreamed(context.Background(), *NewPushPullRequest("test-model"), ch)
 		if err != nil {
