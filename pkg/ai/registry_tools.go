@@ -100,26 +100,17 @@ func (h *RegistryToolHandler) messageAgent(args MessageAgentArgs) string {
 	}
 
 	var lastContent string
-	recv := agent.RecvAny()
+	recv := agent.Recv()
 	for {
 		select {
 		case res, ok := <-recv:
 			if !ok {
 				return lastContent
 			}
-			switch v := any(res).(type) {
-			case *AccumulatedResponse:
-				if v.Chunk != nil && v.Chunk.Done {
-					return v.Content
-				}
-				lastContent = v.Content
-			case *ChatResponse:
-				if v.Done {
-					return "Message sent, but response accumulation not supported for raw ChatResponse"
-				}
-			default:
-				lastContent = fmt.Sprintf("%v", v)
+			if res.Chunk != nil && res.Chunk.Done {
+				return res.Content
 			}
+			lastContent = res.Content
 		case <-ctx.Done():
 			if ctx.Err() != nil {
 				return fmt.Sprintf("context cancelled: %v", ctx.Err())

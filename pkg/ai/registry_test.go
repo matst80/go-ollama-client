@@ -41,7 +41,7 @@ func TestRegistryTools(t *testing.T) {
 				},
 			}
 			req := NewChatRequest("mock")
-			return NewAgentSession(ctx, client, req, WithAccumulator())
+			return NewAgentSession(ctx, client, req)
 		},
 	})
 

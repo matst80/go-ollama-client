@@ -6,12 +6,6 @@ import (
 	"sync"
 )
 
-type AgentSessionInterface interface {
-	SendUserMessage(ctx context.Context, msg string) error
-	RecvAny() <-chan any
-	Stop()
-}
-
 type AgentDefinition struct {
 	Title         string
 	Description   string
@@ -30,7 +24,6 @@ func NewAgentRegistry() *AgentRegistry {
 		AgentTypes: make(map[string]AgentDefinition),
 	}
 }
-
 
 func (r *AgentRegistry) RegisterAgent(name string, agent AgentDefinition) {
 	r.mu.Lock()
@@ -79,7 +72,6 @@ func (r *AgentRegistry) SpawnAgent(ctx context.Context, typeName string, instanc
 	return session, nil
 }
 
-
 func (r *AgentRegistry) RemoveAgent(instanceID string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -88,4 +80,3 @@ func (r *AgentRegistry) RemoveAgent(instanceID string) {
 		delete(r.agents, instanceID)
 	}
 }
-

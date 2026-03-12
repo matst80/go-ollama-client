@@ -26,7 +26,7 @@ func main() {
 			client := ollama.NewOllamaClient("http://localhost:11434")
 			req := ai.NewChatRequest("qwen3.5:4b")
 			req.Messages = []ai.Message{{Role: ai.MessageRoleSystem, Content: content}}
-			return ai.NewAgentSession[*ai.AccumulatedResponse](ctx, client, req, ai.WithAccumulator())
+			return ai.NewAgentSession(ctx, client, req)
 		},
 	})
 
@@ -38,7 +38,7 @@ func main() {
 			client := xai.NewXAIClient("https://api.x.ai/v1", os.Getenv("XAI_API_KEY"))
 			req := ai.NewChatRequest("grok-beta")
 			req.Messages = []ai.Message{{Role: ai.MessageRoleSystem, Content: content}}
-			return ai.NewAgentSession[*ai.AccumulatedResponse](ctx, client, req, ai.WithAccumulator())
+			return ai.NewAgentSession(ctx, client, req)
 		},
 	})
 
@@ -54,7 +54,7 @@ func main() {
 	masterReq := ai.NewChatRequest("grok-4-1-fast-non-reasoning").
 		WithTools(masterToolRegistry.GetTools())
 
-	masterSession := ai.NewAgentSession[*ai.AccumulatedResponse](ctx, masterClient, masterReq, ai.WithAccumulator())
+	masterSession := ai.NewAgentSession(ctx, masterClient, masterReq)
 	defer masterSession.Stop()
 
 	executor := tools.NewToolExecutor(masterToolRegistry)
@@ -128,5 +128,11 @@ func main() {
 	}
 
 	fmt.Println("\n--- Test Completed ---")
-	fmt.Printf("Final list of agents:\n%s\n", toolHandler.Registry.GetRunningAgents())
+	fmt.Printf("Final list of agents:\n")
+	for id, agent := range toolHandler.Registry.GetRunningAgents() {
+		fmt.Printf("Agent %s history:\n", id)
+		for _, msg := range agent.GetMessageHistory() {
+			fmt.Printf("  %s: %s\n", msg.Role, msg.Content)
+		}
+	}
 }

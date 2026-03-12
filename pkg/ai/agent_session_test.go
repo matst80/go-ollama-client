@@ -47,7 +47,7 @@ func TestAgentSession_SendUserMessage(t *testing.T) {
 		},
 	}
 
-	session := NewAgentSession(ctx, mockClient, req, WithAccumulator())
+	session := NewAgentSession(ctx, mockClient, req)
 	defer session.Stop()
 
 	err := session.SendUserMessage(ctx, "Hi")
@@ -108,7 +108,7 @@ func TestAgentSession_SendToolResults(t *testing.T) {
 		},
 	}
 
-	session := NewAgentSession(ctx, mockClient, req, WithAccumulator())
+	session := NewAgentSession(ctx, mockClient, req)
 	defer session.Stop()
 
 	toolMsg := Message{
