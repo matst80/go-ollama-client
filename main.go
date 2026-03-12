@@ -75,7 +75,7 @@ func main() {
 	ctx := context.Background()
 
 	registry := tools.NewRegistry()
-	registry.Register("run", &RunArgs{}, RunCommand)
+	registry.Register("run", "run a shell command", &RunArgs{}, RunCommand)
 
 	req := ai.NewChatRequest("gemini-3.1-flash-lite-preview").
 		WithThinking(true).

@@ -10,23 +10,14 @@ import (
 
 // Registry maintains a list of tools that can be used by the model
 type Registry struct {
-	tools map[string]ToolDefinition
+	tools map[string]ai.ToolDefinition
 	Tools []ai.Function
-}
-
-// ToolDefinition represents a registered tool
-type ToolDefinition struct {
-	parameters map[string]interface{}
-	Name       string
-	Enabled    bool
-	ArgsType   reflect.Type
-	Handler    reflect.Value
 }
 
 // NewRegistry creates a new tool registry
 func NewRegistry() *Registry {
 	return &Registry{
-		tools: make(map[string]ToolDefinition),
+		tools: make(map[string]ai.ToolDefinition),
 	}
 }
 
@@ -39,40 +30,34 @@ func (r *Registry) HasTool(name string) bool {
 // name: The name of the tool.
 // args: A pointer to a struct that defines the tool's parameters.
 // fn: The function to call when the tool is invoked.
-func (r *Registry) Register(name string, args any, fn any) error {
-	v := reflect.ValueOf(fn)
-	if v.Kind() != reflect.Func {
-		return fmt.Errorf("handler must be a function")
+func (r *Registry) Register(name, description string, args any, fn any) error {
+	toolDef, err := ai.GetToolDefinition(name, description, args, fn)
+	if err != nil {
+		return err
 	}
 
-	argType := reflect.TypeOf(args)
-	if argType.Kind() == reflect.Ptr {
-		argType = argType.Elem()
-	}
-
-	if argType.Kind() != reflect.Struct {
-		return fmt.Errorf("args must be a struct or a pointer to a struct")
-	}
-
-	r.tools[name] = ToolDefinition{
-		Name:       name,
-		Enabled:    true,
-		ArgsType:   argType,
-		Handler:    v,
-		parameters: generateJSONSchema(argType),
-	}
+	r.tools[name] = *toolDef
 
 	return nil
 }
 
-// GetTools returns the tools in a format compatible with Ollama's API
+func (r *Registry) RegisterTool(tool ai.ToolDefinition) error {
+	if _, ok := r.tools[tool.Name]; ok {
+		return fmt.Errorf("tool %s already registered", tool.Name)
+	}
+	r.tools[tool.Name] = tool
+	return nil
+}
+
+func (r *Registry) GetTool(name string) (*ai.ToolDefinition, bool) {
+	def, ok := r.tools[name]
+	return &def, ok
+}
+
+// GetTools returns the tools in a format generic format
 func (r *Registry) GetTools() []ai.Tool {
 	var tools []ai.Tool
 	for _, def := range r.tools {
-		// Since we don't have a tool-level description in Register,
-		// we use the name as a placeholder or could potentially
-		// extract it from a field tag if we wanted to be creative.
-		// For now, let's just use the name.
 		if !def.Enabled {
 			continue
 		}
@@ -80,8 +65,8 @@ func (r *Registry) GetTools() []ai.Tool {
 			Type: ai.ToolTypeFunction,
 			Function: ai.Function{
 				Name:        def.Name,
-				Description: def.Name, // Default to name
-				Parameters:  def.parameters,
+				Description: def.Description,
+				Parameters:  def.Parameters,
 			},
 		})
 	}

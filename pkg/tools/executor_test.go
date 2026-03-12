@@ -17,7 +17,7 @@ func TestToolExecutor_NoReturn(t *testing.T) {
 	handler := func(args TestArgs) {
 		// intentionally no return
 	}
-	if err := registry.Register("no_return", &TestArgs{}, handler); err != nil {
+	if err := registry.Register("no_return", "description", &TestArgs{}, handler); err != nil {
 		t.Fatalf("failed to register tool: %v", err)
 	}
 
@@ -62,7 +62,7 @@ func TestToolExecutor_UnmarshalError(t *testing.T) {
 	handler := func(args TestArgs) string {
 		return "should not get here"
 	}
-	if err := registry.Register("expect_bool", &TestArgs{}, handler); err != nil {
+	if err := registry.Register("expect_bool", "description", &TestArgs{}, handler); err != nil {
 		t.Fatalf("failed to register tool: %v", err)
 	}
 
@@ -110,7 +110,7 @@ func TestToolExecutor_DuplicateAndEmptyID(t *testing.T) {
 	handler := func(args TestArgs) string {
 		return "dup-handled"
 	}
-	if err := registry.Register("dup_tool", &TestArgs{}, handler); err != nil {
+	if err := registry.Register("dup_tool", "description", &TestArgs{}, handler); err != nil {
 		t.Fatalf("failed to register tool: %v", err)
 	}
 
@@ -218,7 +218,7 @@ func TestToolExecutor_MultipleReturnValues(t *testing.T) {
 	handler := func(args TestArgs) (string, int) {
 		return "multi", 42
 	}
-	if err := registry.Register("multi_tool", &TestArgs{}, handler); err != nil {
+	if err := registry.Register("multi_tool", "description", &TestArgs{}, handler); err != nil {
 		t.Fatalf("failed to register tool: %v", err)
 	}
 

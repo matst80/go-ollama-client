@@ -2,6 +2,8 @@ package ai
 
 import (
 	"encoding/json"
+	"fmt"
+	"reflect"
 	"time"
 )
 
@@ -334,4 +336,39 @@ func (r *EmbeddingsRequest) WithDimensions(dimensions int) *EmbeddingsRequest {
 type EmbeddingsResponse struct {
 	*BaseResponse
 	Embeddings [][]float64 `json:"embeddings"`
+}
+
+// ToolDefinition represents a registered tool
+type ToolDefinition struct {
+	Parameters  map[string]interface{}
+	Name        string
+	Description string
+	Enabled     bool
+	ArgsType    reflect.Type
+	Handler     reflect.Value
+}
+
+func GetToolDefinition(name, description string, args any, fn any) (*ToolDefinition, error) {
+	v := reflect.ValueOf(fn)
+	if v.Kind() != reflect.Func {
+		return nil, fmt.Errorf("handler must be a function")
+	}
+
+	argType := reflect.TypeOf(args)
+	if argType.Kind() == reflect.Ptr {
+		argType = argType.Elem()
+	}
+
+	if argType.Kind() != reflect.Struct {
+		return nil, fmt.Errorf("args must be a struct or a pointer to a struct")
+	}
+
+	return &ToolDefinition{
+		Name:        name,
+		Description: description,
+		Enabled:     true,
+		ArgsType:    argType,
+		Handler:     v,
+		Parameters:  generateJSONSchema(argType),
+	}, nil
 }

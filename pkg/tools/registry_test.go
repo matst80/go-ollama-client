@@ -15,7 +15,7 @@ func TestRegistry_GetTools(t *testing.T) {
 	registry := NewRegistry()
 
 	handler := func(args TestArgs) {}
-	registry.Register("run", &TestArgs{}, handler)
+	registry.Register("run", "run a command", &TestArgs{}, handler)
 
 	tools := registry.GetTools()
 	if len(tools) != 1 {
@@ -67,7 +67,7 @@ func TestRegistry_Call(t *testing.T) {
 		return "ok"
 	}
 
-	registry.Register("run", &TestArgs{}, handler)
+	registry.Register("run", "run a command", &TestArgs{}, handler)
 
 	argsJSON := json.RawMessage(`{"command": "ls", "arg": "-la", "wait": true}`)
 	results, err := registry.Call("run", argsJSON)

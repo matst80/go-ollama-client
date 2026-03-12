@@ -1,4 +1,4 @@
-package tools
+package ai
 
 import (
 	"reflect"
