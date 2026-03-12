@@ -41,13 +41,18 @@ func RunCommand(args RunArgs) string {
 	return string(output)
 }
 
+func ListOllamaModels(client *ollama.OllamaClient) {
+	models, err := client.ListModels(context.Background())
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _, model := range models.Models {
+		fmt.Printf("%s, (%d MB)\n", model.Model, model.Size/1024/1024)
+	}
+}
+
 func PullModel(client *ollama.OllamaClient, model string) error {
 	ch := make(chan *ollama.StatusResponse)
-
-	// Consume the status channel in a separate goroutine so the streamer
-	// can send without deadlocking. Previously the anonymous function
-	// ran synchronously and blocked waiting for messages before the
-	// streamer was started.
 	go func() {
 		log.Printf("Pulling %s", model)
 		for resp := range ch {
@@ -68,24 +73,12 @@ func main() {
 	client := gemini.NewGeminiClient(os.Getenv("GEMENI_API_KEY"))
 	//client := ollama.NewOllamaClient("http://localhost:11434")
 	ctx := context.Background()
-	// models, err := client.ListModels(ctx)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-	// for _, model := range models.Models {
-	// 	fmt.Printf("%s, (%d MB)\n", model.Model, model.Size/1024/1024)
-	// }
-	// PullModel(client, "qwen3.5:4b")
 
 	registry := tools.NewRegistry()
 	registry.Register("run", &RunArgs{}, RunCommand)
 
 	req := ai.NewChatRequest("gemini-3.1-flash-lite-preview").
-		WithStreaming(true).
-		// WithThinking(true).
-		// WithOptions(&ai.ModelOptions{
-		// 	ContextWindowSize: 8192,
-		// }).
+		WithThinking(true).
 		WithTools(registry.GetTools())
 
 	// Initialize the new AgentSession with the request

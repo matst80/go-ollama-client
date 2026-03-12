@@ -59,11 +59,25 @@ func (a *AgentSession[T]) Recv() <-chan T {
 	return a.GlobalChan
 }
 
+// RecvAny returns a receive-only channel of any, wrapping the internal typed channel.
+// This is useful for registry management where the session type is unknown.
+func (a *AgentSession[T]) RecvAny() <-chan any {
+	ch := make(chan any, cap(a.GlobalChan))
+	go func() {
+		for v := range a.GlobalChan {
+			ch <- v
+		}
+		close(ch)
+	}()
+	return ch
+}
+
 // Stop cancels the session context and closes the global channel.
 func (a *AgentSession[T]) Stop() {
 	a.cancel()
 	close(a.GlobalChan)
 }
+
 
 // SendUserMessage appends a user message to the request and triggers a streaming chat.
 func (a *AgentSession[T]) SendUserMessage(ctx context.Context, msg string) error {

@@ -68,6 +68,7 @@ func (c *OllamaClient) Chat(ctx context.Context, req ai.ChatRequest) (*ai.ChatRe
 
 // ChatStreamed handles the streaming request to Ollama and returns an error if the request or streaming fails.
 func (c *OllamaClient) ChatStreamed(ctx context.Context, req ai.ChatRequest, ch chan *ai.ChatResponse) error {
+	req.Stream = true
 	defer close(ch)
 
 	resp, err := c.client.PostJson(ctx, string(ChatEndpoint), req)

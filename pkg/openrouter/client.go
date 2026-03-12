@@ -60,6 +60,7 @@ var DONE = []byte("[DONE]")
 
 // ChatStreamed handles the streaming request to OpenRouter and returns an error if the request or streaming fails.
 func (c *OpenRouterClient) ChatStreamed(ctx context.Context, req ai.ChatRequest, ch chan *ai.ChatResponse) error {
+	req.Stream = true
 	defer close(ch)
 
 	resp, err := c.client.PostJson(ctx, string(ChatEndpoint), req)
