@@ -82,11 +82,11 @@ func (c *XAIClient) ChatStreamed(ctx context.Context, req ai.ChatRequest, ch cha
 		if err != nil {
 			return fmt.Errorf("xAI request failed with status %d and error reading body: %w", resp.StatusCode, err)
 		}
-		reqJson, err := json.Marshal(xReq)
-		if err != nil {
-			return fmt.Errorf("xAI request failed with status %d and error marshaling request: %w", resp.StatusCode, err)
-		}
-		fmt.Printf("Request:\n%s\n", reqJson)
+		// reqJson, err := json.Marshal(xReq)
+		// if err != nil {
+		// 	return fmt.Errorf("xAI request failed with status %d and error marshaling request: %w", resp.StatusCode, err)
+		// }
+		//fmt.Printf("Request:\n%s\n", reqJson)
 		return fmt.Errorf("xAI request failed with status %d: %s", resp.StatusCode, string(body))
 	}
 

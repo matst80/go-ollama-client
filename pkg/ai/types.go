@@ -349,10 +349,14 @@ type ToolDefinition struct {
 }
 
 func GetToolDefinition(name, description string, args any, fn any) (*ToolDefinition, error) {
-	v := reflect.ValueOf(fn)
-	if v.Kind() != reflect.Func {
-		return nil, fmt.Errorf("handler must be a function")
+	var v reflect.Value
+	if fn != nil {
+		v = reflect.ValueOf(fn)
+		if v.Kind() != reflect.Func {
+			return nil, fmt.Errorf("handler must be a function")
+		}
 	}
+
 
 	argType := reflect.TypeOf(args)
 	if argType.Kind() == reflect.Ptr {

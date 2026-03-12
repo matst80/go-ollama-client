@@ -49,6 +49,12 @@ func (r *Registry) RegisterTool(tool ai.ToolDefinition) error {
 	return nil
 }
 
+func (r *Registry) RegisterTools(tools ...ai.ToolDefinition) {
+	for _, tool := range tools {
+		r.RegisterTool(tool)
+	}
+}
+
 func (r *Registry) GetTool(name string) (*ai.ToolDefinition, bool) {
 	def, ok := r.tools[name]
 	return &def, ok
