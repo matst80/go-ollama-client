@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -13,7 +12,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/matst80/go-ollama-client/pkg/ai"
 	"github.com/matst80/go-ollama-client/pkg/ollama"
-	"github.com/matst80/go-ollama-client/pkg/openrouter"
 	"github.com/matst80/go-ollama-client/pkg/tools"
 )
 
@@ -70,8 +68,8 @@ func PullModel(client *ollama.OllamaClient, model string) error {
 }
 
 func main() {
-	client := openrouter.NewOpenRouterClient("https://openrouter.ai", os.Getenv("OPENROUTER_KEY")).WithLogFile("openrouter.log")
-	//client := ollama.NewOllamaClient("http://localhost:11434")
+	//client := openrouter.NewOpenRouterClient("https://openrouter.ai", os.Getenv("OPENROUTER_KEY")).WithLogFile("openrouter.log")
+	client := ollama.NewOllamaClient("http://localhost:11434")
 	ctx := context.Background()
 	// models, err := client.ListModels(ctx)
 	// if err != nil {
@@ -85,7 +83,7 @@ func main() {
 	registry := tools.NewRegistry()
 	registry.Register("run", &RunArgs{}, RunCommand)
 
-	req := ai.NewChatRequest("stepfun/step-3.5-flash:free").
+	req := ai.NewChatRequest("qwen3.5:4b").
 		WithStreaming(true).
 		// WithThinking(true).
 		// WithOptions(&ai.ModelOptions{

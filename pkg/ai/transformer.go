@@ -13,8 +13,8 @@ func StreamAccumulator(ctx context.Context, input <-chan *ChatResponse, autoClos
 	go func() {
 		defer close(output)
 
-		content := ""
-		thinking := ""
+		var content strings.Builder
+		var thinking strings.Builder
 		toolCalls := make([]ToolCall, 0)
 
 		for {
@@ -28,12 +28,12 @@ func StreamAccumulator(ctx context.Context, input <-chan *ChatResponse, autoClos
 
 				// Accumulate content
 				if chunk.Message.Content != "" {
-					content += chunk.Message.Content
+					content.WriteString(chunk.Message.Content)
 				}
 
 				// Accumulate reasoning content
 				if chunk.Message.ReasoningContent != "" {
-					thinking += chunk.Message.ReasoningContent
+					thinking.WriteString(chunk.Message.ReasoningContent)
 				}
 
 				// Accumulate tool calls
@@ -59,7 +59,12 @@ func StreamAccumulator(ctx context.Context, input <-chan *ChatResponse, autoClos
 
 								// Accumulate arguments
 								if len(tc.Function.Arguments) > 0 {
-									toolCalls[i].Function.Arguments = append(toolCalls[i].Function.Arguments, tc.Function.Arguments...)
+									if indexMatch {
+										// log.Printf("appending %s to %s", toolCalls[i].Function.Arguments, tc.Function.Arguments)
+										toolCalls[i].Function.Arguments = append(toolCalls[i].Function.Arguments, tc.Function.Arguments...)
+									} else {
+										toolCalls[i].Function.Arguments = tc.Function.Arguments
+									}
 								}
 								found = true
 								break
@@ -77,8 +82,8 @@ func StreamAccumulator(ctx context.Context, input <-chan *ChatResponse, autoClos
 				// We create a copy to handle temporary markdown termination without affecting the actual accumulated content
 				toSend := AccumulatedResponse{
 					Chunk:            chunk,
-					Content:          content,
-					ReasoningContent: thinking,
+					Content:          content.String(),
+					ReasoningContent: thinking.String(),
 					ToolCalls:        toolCalls,
 				}
 

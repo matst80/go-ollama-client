@@ -1,15 +1,10 @@
 package openrouter
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
-
-	"os"
 
 	"github.com/matst80/go-ollama-client/pkg/ai"
 )
@@ -80,52 +75,53 @@ func (c *OpenRouterClient) ChatStreamed(ctx context.Context, req ai.ChatRequest,
 		return fmt.Errorf("OpenRouter request failed with status %d", resp.StatusCode)
 	}
 
-	reader := bufio.NewReader(resp.Body)
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
+	var chatResp ChatCompletionChunk
 
-		line, err := reader.ReadBytes('\n')
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
-			return err
-		}
+	handler := ai.DataJsonChunkReader(&chatResp, func(chunk *ChatCompletionChunk) bool {
+		ch <- chunk.ToChatResponse()
+		chatResp = ChatCompletionChunk{} // reset for next chunk
+		return false
+	})
 
-		if c.logPath != "" {
-			if f, err := os.OpenFile(c.logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
-				f.Write(line)
-				f.Close()
-			}
-		}
+	// // Use shared ChunkReader to iterate trimmed lines
+	// handler2 := func(line []byte) (stop bool) {
+	// 	// Log the line if requested (ChunkReader passes a trimmed line)
+	// 	if c.logPath != "" {
+	// 		if f, err := os.OpenFile(c.logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+	// 			f.Write(line)
+	// 			f.Write([]byte("\n"))
+	// 			f.Close()
+	// 		}
+	// 	}
 
-		if bytes.Equal(line, DONE) {
-			break
-		}
-		//log.Println(line)
-		if !bytes.HasPrefix(line, DATA_PREFIX) {
-			continue
-		}
-		line = line[len(DATA_PREFIX):]
-		if len(line) == 0 {
-			continue
-		}
-		//log.Printf("got: %s", cleanLine)
+	// 	// If the line is the done marker, stop processing
+	// 	if bytes.Equal(line, DONE) {
+	// 		return true
+	// 	}
 
-		var chatResp ChatCompletionChunk
-		if err := json.Unmarshal(line, &chatResp); err != nil {
-			continue
-		}
+	// 	// Expect lines to start with the data prefix
+	// 	if !bytes.HasPrefix(line, DATA_PREFIX) {
+	// 		return false
+	// 	}
 
-		ch <- chatResp.ToChatResponse()
+	// 	payload := line[len(DATA_PREFIX):]
+	// 	if len(payload) == 0 {
+	// 		return false
+	// 	}
 
+	// 	var chatResp ChatCompletionChunk
+	// 	if err := json.Unmarshal(payload, &chatResp); err != nil {
+	// 		log.Printf("error parsing: %s, err: %s", payload, err)
+	// 		return false
+	// 	}
+
+	// 	ch <- chatResp.ToChatResponse()
+	// 	return false
+	// }
+
+	if err := ai.ChunkReader(ctx, resp.Body, handler); err != nil {
+		return err
 	}
+
 	return nil
 }

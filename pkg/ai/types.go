@@ -45,11 +45,6 @@ func NewToolResponseMessage(toolCallID string, content string) *Message {
 	}
 }
 
-func (m *Message) SetReasoningContent(thinking string) *Message {
-	m.ReasoningContent = thinking
-	return m
-}
-
 func (m *Message) SetImages(images []string) *Message {
 	m.Images = images
 	return m
@@ -79,9 +74,9 @@ type Tool struct {
 
 // Function represents the function definition for a tool
 type Function struct {
-	Name        string      `json:"name"`
-	Description string      `json:"description"`
-	Parameters  interface{} `json:"parameters"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Parameters  any    `json:"parameters"`
 }
 
 // ToolCall represents a call to a tool from the AI
@@ -120,28 +115,6 @@ const (
 	ThinkingLow    ThinkingLevel = "low"
 )
 
-// ModelOptions represents additional parameters for the model
-type ModelOptions struct {
-	// Temperature is the creativity of the model. Higher is more creative. (Default: 0.8)
-	Temperature float64 `json:"temperature,omitempty"`
-	// ContextWindowSize sets the size of the context window. (Default: 2048)
-	ContextWindowSize int `json:"num_ctx,omitempty"`
-	// RepeatPenalty penalizes repetitions. Higher is less repetitive. (Default: 1.1)
-	RepeatPenalty float64 `json:"repeat_penalty,omitempty"`
-	// TopP leads to more diverse or focused text. (Default: 0.9)
-	TopP float64 `json:"top_p,omitempty"`
-	// TopK reduces the probability of generating nonsense. (Default: 40)
-	TopK int `json:"top_k,omitempty"`
-	// NumPredict is the maximum number of tokens to predict. (Default: 128)
-	NumPredict int `json:"num_predict,omitempty"`
-	// Seed is the random seed for reproducibility. (Default: 0)
-	Seed *int64 `json:"seed,omitempty"`
-	// Stop is a list of stop sequences that will halt generation when encountered. (Default: none)
-	Stop []string `json:"stop,omitempty"`
-	// Minimum probability threshold for token selection
-	MinP float64 `json:"min_p,omitempty"`
-}
-
 // BaseRequest contains common fields for all Ollama requests
 type BaseRequest[T any] struct {
 	parent *T
@@ -152,16 +125,9 @@ type BaseRequest[T any] struct {
 	Stream bool `json:"stream"`
 	// Format is the format to return a response in (e.g., "json")
 	Format *ResponseFormat `json:"format,omitempty"`
-	// KeepAlive controls how long the model will stay loaded into memory (default: 5m)
-	KeepAlive *string `json:"keep_alive,omitempty"`
+
 	// Think if true, the model will return its thinking process
 	Think any `json:"think,omitempty"`
-	// Options are additional model parameters like temperature
-	Options *ModelOptions `json:"options,omitempty"`
-	// Logprobs if true, return the log probabilities of the tokens
-	Logprobs *bool `json:"logprobs,omitempty"`
-	// TopLogprobs is the number of top log probabilities to return
-	TopLogprobs *int `json:"top_logprobs,omitempty"`
 }
 
 func (r *BaseRequest[T]) WithModel(model string) *T {
@@ -179,19 +145,6 @@ func (r *BaseRequest[T]) WithFormat(format ResponseFormat) *T {
 	return r.parent
 }
 
-func (r *BaseRequest[T]) WithOptions(options *ModelOptions) *T {
-	r.Options = options
-	return r.parent
-}
-
-func (r *BaseRequest[T]) WithOptionsBuilder(builder func(*ModelOptions)) *T {
-	if r.Options == nil {
-		r.Options = &ModelOptions{}
-	}
-	builder(r.Options)
-	return r.parent
-}
-
 func (r *BaseRequest[T]) WithThinking(think bool) *T {
 	r.Think = think
 	return r.parent
@@ -199,21 +152,6 @@ func (r *BaseRequest[T]) WithThinking(think bool) *T {
 
 func (r *BaseRequest[T]) WithThinkingLevel(think ThinkingLevel) *T {
 	r.Think = think
-	return r.parent
-}
-
-func (r *BaseRequest[T]) WithKeepAlive(keepAlive string) *T {
-	r.KeepAlive = &keepAlive
-	return r.parent
-}
-
-func (r *BaseRequest[T]) WithLogProbabilities(logprobs bool) *T {
-	r.Logprobs = &logprobs
-	return r.parent
-}
-
-func (r *BaseRequest[T]) WithTopLogProbabilities(topLogprobs int) *T {
-	r.TopLogprobs = &topLogprobs
 	return r.parent
 }
 
@@ -247,13 +185,6 @@ func NewChatRequest(model string) *ChatRequest {
 	r := &ChatRequest{}
 	r.parent = r
 	r.Model = model
-	return r
-}
-
-// NewChatRequestWithOptions creates a new ChatRequest with model and options
-func NewChatRequestWithOptions(model string, options *ModelOptions) *ChatRequest {
-	r := NewChatRequest(model)
-	r.Options = options
 	return r
 }
 

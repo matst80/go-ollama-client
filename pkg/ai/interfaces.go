@@ -24,7 +24,6 @@ type EmbeddingClient interface {
 	GenerateEmbeddings(ctx context.Context, req EmbeddingsRequest) (*EmbeddingsResponse, error)
 }
 
-
 type VersionClient interface {
 	GetVersion(ctx context.Context) (string, error)
 }

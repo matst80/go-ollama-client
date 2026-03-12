@@ -1,12 +1,9 @@
 package ollama
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 
 	"github.com/matst80/go-ollama-client/pkg/ai"
@@ -85,46 +82,22 @@ func (c *OllamaClient) ChatStreamed(ctx context.Context, req ai.ChatRequest, ch 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("ollama request failed with status %d", resp.StatusCode)
 	}
+	chatResp := &ai.ChatResponse{}
+	handler := ai.JsonChunkReader(chatResp, func(data *ai.ChatResponse) (stop bool) {
+		ch <- data
+		done := data.Done
+		chatResp = &ai.ChatResponse{} // reset for next chunk
+		return done
+	})
 
-	reader := bufio.NewReader(resp.Body)
-	for {
-		select {
-		case <-ctx.Done():
+	err = ai.ChunkReader(ctx, resp.Body, handler)
+	if err != nil {
+		if ctx.Err() != nil {
 			return ctx.Err()
-		default:
 		}
-
-		line, err := reader.ReadBytes('\n')
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
-			return err
-		}
-
-		cleanLine := bytes.TrimSpace(line)
-		if len(cleanLine) == 0 {
-			continue
-		}
-
-		var chatResp ai.ChatResponse
-		if err := json.Unmarshal(cleanLine, &chatResp); err != nil {
-			continue
-		}
-
-		if chatResp.Error != nil {
-			return fmt.Errorf("ollama error: %s", *chatResp.Error)
-		}
-
-		ch <- &chatResp
-
-		if chatResp.Done {
-			break
-		}
+		return err
 	}
+
 	return nil
 }
 
@@ -270,41 +243,19 @@ func (c *OllamaClient) CreateModelStreamed(ctx context.Context, req CreateReques
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("ollama request failed with status %d", resp.StatusCode)
 	}
+	var createResp CreateResponse
+	jsonHandler := ai.JsonChunkReader(&createResp, func(data *CreateResponse) (stop bool) {
+		ch <- data
+		createResp = CreateResponse{}   // reset for next chunk
+		return data.Status == "success" // stop if creation is complete
+	})
 
-	reader := bufio.NewReader(resp.Body)
-	for {
-		select {
-		case <-ctx.Done():
+	err = ai.ChunkReader(ctx, resp.Body, jsonHandler)
+	if err != nil {
+		if ctx.Err() != nil {
 			return ctx.Err()
-		default:
 		}
-
-		line, err := reader.ReadBytes('\n')
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
-			return err
-		}
-
-		cleanLine := bytes.TrimSpace(line)
-		if len(cleanLine) == 0 {
-			continue
-		}
-
-		var createResp CreateResponse
-		if err := json.Unmarshal(cleanLine, &createResp); err != nil {
-			continue
-		}
-
-		ch <- &createResp
-
-		if createResp.Status == "success" {
-			break
-		}
+		return err
 	}
 	return nil
 }
@@ -356,39 +307,25 @@ func (c *OllamaClient) PullModelStreamed(ctx context.Context, req PushPullReques
 		return fmt.Errorf("ollama request failed with status %d", resp.StatusCode)
 	}
 
-	reader := bufio.NewReader(resp.Body)
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-
-		line, err := reader.ReadBytes('\n')
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
-			return err
-		}
-
-		cleanLine := bytes.TrimSpace(line)
-		if len(cleanLine) == 0 {
-			continue
-		}
+	err = ai.ChunkReader(ctx, resp.Body, func(line []byte) (stop bool) {
 		var pullResp StatusResponse
-		if err := json.Unmarshal(cleanLine, &pullResp); err != nil {
-			continue
+		if err := json.Unmarshal(line, &pullResp); err != nil {
+			// skip malformed chunk
+			return false
 		}
 
 		ch <- &pullResp
 
 		if pullResp.Status == "success" {
-			break
+			return true
 		}
+		return false
+	})
+	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return err
 	}
 	return nil
 }
@@ -432,36 +369,21 @@ func (c *OllamaClient) PushModelStreamed(ctx context.Context, req PushPullReques
 		return fmt.Errorf("ollama request failed with status %d", resp.StatusCode)
 	}
 
-	reader := bufio.NewReader(resp.Body)
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-
-		line, err := reader.ReadBytes('\n')
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
-			return err
-		}
-
-		cleanLine := bytes.TrimSpace(line)
-		if len(cleanLine) == 0 {
-			continue
-		}
-
+	err = ai.ChunkReader(ctx, resp.Body, func(line []byte) (stop bool) {
 		var statusResp StatusResponse
-		if err := json.Unmarshal(cleanLine, &statusResp); err != nil {
-			continue
+		if err := json.Unmarshal(line, &statusResp); err != nil {
+			// skip malformed chunk
+			return false
 		}
 
 		ch <- &statusResp
+		return false
+	})
+	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return err
 	}
 	return nil
 }
