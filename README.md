@@ -145,6 +145,52 @@ registry.Register("check_disk", &DiskArgs{}, CheckDisk)
 req := ai.NewChatRequest("model").WithTools(registry.GetTools())
 ```
 
+## Registry Tools & Multi-Agent Orchestration
+
+The `AgentRegistry` and `RegistryToolHandler` enable complex multi-agent workflows where a "master" agent can spawn, list, and message other sub-agents.
+
+### 1. Register Agent Types
+Define the types of agents that can be dynamically spawned.
+
+```go
+registry := ai.NewAgentRegistry()
+
+registry.RegisterAgent("ollama", ai.AgentDefinition{
+    Title:       "Ollama Agent",
+    Description: "Local LLM powered by Ollama",
+    SpawnFunction: func(ctx context.Context, content string) ai.AgentSessionInterface {
+        client := ollama.NewOllamaClient("http://localhost:11434")
+        req := ai.NewChatRequest("llama3")
+        req.Messages = []ai.Message{{Role: ai.MessageRoleSystem, Content: content}}
+        return ai.NewAgentSession(ctx, client, req)
+    },
+})
+```
+
+### 2. Expose Registry as Tools
+Use `RegistryToolHandler` to convert registry operations into tools that an LLM can understand and call.
+
+```go
+// Create the handler
+toolHandler := ai.NewRegistryToolHandler(registry)
+
+// Register these tools with a ToolRegistry
+masterToolRegistry := tools.NewRegistry()
+masterToolRegistry.RegisterTools(toolHandler.GetToolDefinitions()...)
+
+// Create a Master Agent that has access to these tools
+masterClient := gemini.NewGeminiClient(apiKey)
+masterReq := ai.NewChatRequest("gemini-1.5-flash").WithTools(masterToolRegistry.GetTools())
+masterSession := ai.NewAgentSession(ctx, masterClient, masterReq)
+```
+
+### Available Registry Tools
+
+- `spawn_agent`: Spawns a new instance of a registered agent type (e.g., "researcher").
+- `message_agent`: Sends a message to a running agent instance and returns its response.
+- `list_agents`: Returns a list of all currently active agent instances.
+- `list_agent_types`: Returns all available agent types that can be spawned.
+
 ## Supported Providers
 
 - **Ollama**: `ollama.NewOllamaClient(url)`
