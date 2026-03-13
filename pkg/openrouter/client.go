@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
 
 	"github.com/matst80/go-ai-agent/pkg/ai"
@@ -43,7 +45,10 @@ func (c *OpenRouterClient) Chat(ctx context.Context, req ai.ChatRequest) (*ai.Ch
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("OpenRouter request failed with status %d", resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		reqBody, _ := json.Marshal(req)
+		log.Printf("OpenRouter error: status=%d, request=%s, response=%s", resp.StatusCode, string(reqBody), string(body))
+		return nil, fmt.Errorf("OpenRouter request failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
 	decoder := json.NewDecoder(resp.Body)
@@ -73,7 +78,10 @@ func (c *OpenRouterClient) ChatStreamed(ctx context.Context, req ai.ChatRequest,
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("OpenRouter request failed with status %d", resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		reqBody, _ := json.Marshal(req)
+		log.Printf("OpenRouter error: status=%d, request=%s, response=%s", resp.StatusCode, string(reqBody), string(body))
+		return fmt.Errorf("OpenRouter request failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
 	var chatResp ChatCompletionChunk

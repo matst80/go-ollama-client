@@ -75,7 +75,7 @@ type ModelOptions struct {
 }
 
 type OllamaChatRequest struct {
-	*ai.BaseRequest[OllamaChatRequest]
+	*ai.ChatRequest
 	// KeepAlive controls how long the model will stay loaded into memory (default: 5m)
 	KeepAlive *string `json:"keep_alive,omitempty"`
 	// Options are additional model parameters like temperature
