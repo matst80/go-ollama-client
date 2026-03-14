@@ -31,7 +31,7 @@ func TestRegistryTools(t *testing.T) {
 	registry.RegisterAgent("echo", AgentDefinition{
 		Title:       "Echo Agent",
 		Description: "Returns whatever you send",
-		SpawnFunction: func(ctx context.Context, content string) AgentSessionInterface {
+		spawnFunction: func(ctx context.Context, content string) AgentSessionInterface {
 			client := &mockChatClient{
 				responses: []*ChatResponse{
 					{

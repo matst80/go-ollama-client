@@ -8,6 +8,7 @@ import (
 
 	"github.com/matst80/go-ai-agent/pkg/ai"
 	"github.com/matst80/go-ai-agent/pkg/ollama"
+	"github.com/matst80/go-ai-agent/pkg/openrouter"
 	"github.com/matst80/go-ai-agent/pkg/tools"
 	"github.com/matst80/go-ai-agent/pkg/xai"
 )
@@ -41,6 +42,16 @@ func main() {
 			return ai.NewAgentSession(ctx, client, req)
 		},
 	))
+	registry.RegisterAgent("openrouter", ai.NewAgentDefinition(
+		"OpenRouter Agent",
+		"Cloud LLM powered by OpenRouter (hunter-alpha)",
+		func(ctx context.Context, content string) ai.AgentSessionInterface {
+			client := openrouter.NewOpenRouterClient("https://openrouter.ai", os.Getenv("OPENROUTER_API_KEY"))
+			req := ai.NewChatRequest("openrouter/hunter-alpha")
+			req.Messages = []ai.Message{{Role: ai.MessageRoleSystem, Content: content}}
+			return ai.NewAgentSession(ctx, client, req)
+		},
+	))
 
 	// 4. Create RegistryToolHandler to expose registry operations as tools
 	toolHandler := ai.NewRegistryToolHandler(registry)
@@ -59,9 +70,9 @@ func main() {
 
 	executor := tools.NewToolExecutor(masterToolRegistry)
 
-	// 7. Simple Test: Ask the Master Agent to spawn an Ollama agent and talk to it
+	// 7. Simple Test: Ask the Master Agent to spawn an OpenRouter agent and talk to it
 	fmt.Println("--- Master Agent Session Started ---")
-	testPrompt := "Please spawn an 'ollama' agent with instance ID 'local-assistant' to help with local tasks. " +
+	testPrompt := "Please spawn an 'openrouter' agent with instance ID 'local-assistant' to help with local tasks. " +
 		"Then message it to ask 'What is the capital of France?' and report back."
 
 	if err := masterSession.SendUserMessage(ctx, testPrompt); err != nil {

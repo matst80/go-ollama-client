@@ -39,6 +39,7 @@ type AgentSession struct {
 	ctx        context.Context
 	cancel     context.CancelFunc
 	mu         sync.Mutex
+	wg         sync.WaitGroup
 	state      AgentState
 }
 
@@ -59,6 +60,7 @@ func NewAgentSession(ctx context.Context, client ChatClientInterface, req *ChatR
 			CreatedAt:  time.Now(),
 			LastActive: time.Now(),
 		},
+		wg: sync.WaitGroup{},
 	}
 	for _, opt := range opts {
 		opt(session)
@@ -78,7 +80,9 @@ func (a *AgentSession) Stop() {
 }
 
 // SendUserMessage appends a user message to the request and triggers a streaming chat.
+// It waits for any previous stream to finish.
 func (a *AgentSession) SendUserMessage(ctx context.Context, msg string) error {
+	a.wg.Wait()
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.rec.AddMessage(MessageRoleUser, msg)
@@ -86,7 +90,9 @@ func (a *AgentSession) SendUserMessage(ctx context.Context, msg string) error {
 }
 
 // SendMessages appends one or more pre-constructed messages (like tool results) and triggers a streaming chat.
+// It waits for any previous stream to finish.
 func (a *AgentSession) SendMessages(ctx context.Context, msgs ...Message) error {
+	a.wg.Wait()
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.rec.Messages = append(a.rec.Messages, msgs...)
@@ -132,6 +138,14 @@ func (a *AgentSession) streamChat(ctx context.Context) error {
 
 			// We need a separate goroutine because ChatStreamed is blocking
 			go func() {
+				a.SetState(func(as *AgentState) {
+					as.Status = "waiting"
+					as.LastActive = time.Now()
+				})
+				defer a.SetState(func(as *AgentState) {
+					as.Status = "idle"
+					as.LastActive = time.Now()
+				})
 				err := a.client.ChatStreamed(ctx, *a.rec, tempCh)
 				if err != nil {
 					lastErr = err
@@ -170,6 +184,7 @@ func (a *AgentSession) streamChat(ctx context.Context) error {
 	// Use StreamAccumulator to get accumulated responses
 	accCh := StreamAccumulator(ctx, ch, false)
 
+	a.wg.Add(1)
 	go func() {
 		var last *AccumulatedResponse
 		for res := range accCh {
@@ -195,6 +210,7 @@ func (a *AgentSession) streamChat(ctx context.Context) error {
 			})
 			a.mu.Unlock()
 		}
+		a.wg.Done()
 	}()
 
 	return nil

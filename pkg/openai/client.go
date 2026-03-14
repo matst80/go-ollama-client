@@ -34,9 +34,11 @@ func (c *OpenAIClient) WithLogFile(path string) *OpenAIClient {
 
 // Chat handles a non-streaming request to OpenAI and returns the full ChatResponse
 func (c *OpenAIClient) Chat(ctx context.Context, req ai.ChatRequest) (*ai.ChatResponse, error) {
-	req.Stream = false
+	// Convert to strongly-typed OpenAI request where function arguments are JSON strings.
+	oaReq := ToOpenAIChatRequest(&req)
+	oaReq.Stream = false
 
-	resp, err := c.client.PostJson(ctx, string(ChatEndpoint), req)
+	resp, err := c.client.PostJson(ctx, string(ChatEndpoint), oaReq)
 	if err != nil {
 		return nil, err
 	}
@@ -60,10 +62,12 @@ var DONE = []byte("[DONE]")
 
 // ChatStreamed handles the streaming request to OpenAI and returns an error if the request or streaming fails.
 func (c *OpenAIClient) ChatStreamed(ctx context.Context, req ai.ChatRequest, ch chan *ai.ChatResponse) error {
-	req.Stream = true
+	// Convert to strongly-typed OpenAI request where function arguments are JSON strings.
+	oaReq := ToOpenAIChatRequest(&req)
+	oaReq.Stream = true
 	defer close(ch)
 
-	resp, err := c.client.PostJson(ctx, string(ChatEndpoint), req)
+	resp, err := c.client.PostJson(ctx, string(ChatEndpoint), oaReq)
 	if err != nil {
 		if ctx.Err() != nil {
 			return ctx.Err()

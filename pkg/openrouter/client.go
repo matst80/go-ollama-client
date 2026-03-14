@@ -38,7 +38,10 @@ func (c *OpenRouterClient) WithLogFile(path string) *OpenRouterClient {
 func (c *OpenRouterClient) Chat(ctx context.Context, req ai.ChatRequest) (*ai.ChatResponse, error) {
 	req.Stream = false
 
-	resp, err := c.client.PostJson(ctx, string(ChatEndpoint), req)
+	// Convert to strongly-typed OpenRouter request where function arguments are JSON strings.
+	orReq := ToOpenRouterChatRequest(&req)
+
+	resp, err := c.client.PostJson(ctx, string(ChatEndpoint), orReq)
 	if err != nil {
 		return nil, err
 	}
@@ -46,8 +49,10 @@ func (c *OpenRouterClient) Chat(ctx context.Context, req ai.ChatRequest) (*ai.Ch
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		reqBody, _ := json.Marshal(req)
-		log.Printf("OpenRouter error: status=%d, request=%s, response=%s", resp.StatusCode, string(reqBody), string(body))
+		reqBody, _ := json.Marshal(orReq)
+		log.Printf("OpenRouter error: status=%d", resp.StatusCode)
+		log.Printf("Request\n%s", reqBody)
+		log.Printf("Response\n%s", body)
 		return nil, fmt.Errorf("OpenRouter request failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -68,7 +73,10 @@ func (c *OpenRouterClient) ChatStreamed(ctx context.Context, req ai.ChatRequest,
 	req.Stream = true
 	defer close(ch)
 
-	resp, err := c.client.PostJson(ctx, string(ChatEndpoint), req)
+	// Convert to strongly-typed OpenRouter request where function arguments are JSON strings.
+	orReq := ToOpenRouterChatRequest(&req)
+
+	resp, err := c.client.PostJson(ctx, string(ChatEndpoint), orReq)
 	if err != nil {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -79,7 +87,7 @@ func (c *OpenRouterClient) ChatStreamed(ctx context.Context, req ai.ChatRequest,
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		reqBody, _ := json.Marshal(req)
+		reqBody, _ := json.Marshal(orReq)
 		log.Printf("OpenRouter error: status=%d, request=%s, response=%s", resp.StatusCode, string(reqBody), string(body))
 		return fmt.Errorf("OpenRouter request failed with status %d: %s", resp.StatusCode, string(body))
 	}

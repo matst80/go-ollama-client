@@ -121,3 +121,89 @@ func (c *ChatCompletionChunk) ToChatResponse() *ai.ChatResponse {
 
 	return resp
 }
+
+// --- Strongly typed OpenAI request structures and helper conversion --- //
+
+// OpenAIFunction models the function call structure expected by OpenAI:
+// `arguments` must be a JSON string (i.e., a string containing JSON text).
+type OpenAIFunction struct {
+	Name      string `json:"name,omitempty"`
+	Arguments string `json:"arguments,omitempty"`
+}
+
+// OpenAIToolCall models a tool call inside a message for OpenAI
+type OpenAIToolCall struct {
+	Index    *int           `json:"index,omitempty"`
+	ID       string         `json:"id,omitempty"`
+	Type     string         `json:"type,omitempty"`
+	Function OpenAIFunction `json:"function"`
+}
+
+// OpenAIMessage is the message shape for OpenAI requests
+type OpenAIMessage struct {
+	Role             ai.MessageRole   `json:"role"`
+	Content          string           `json:"content"`
+	ReasoningContent string           `json:"thinking,omitempty"`
+	Images           []string         `json:"images,omitempty"`
+	ToolCalls        []OpenAIToolCall `json:"tool_calls,omitempty"`
+	ToolCallID       string           `json:"tool_call_id,omitempty"`
+}
+
+// OpenAIChatRequest is the strongly-typed request shape to send to OpenAI
+type OpenAIChatRequest struct {
+	Model    string              `json:"model"`
+	Stream   bool                `json:"stream"`
+	Format   *ai.ResponseFormat  `json:"format,omitempty"`
+	Think    any                 `json:"think,omitempty"`
+	Messages []OpenAIMessage     `json:"messages"`
+	Tools    []ai.Tool           `json:"tools,omitempty"`
+}
+
+// ToOpenAIChatRequest converts a typed ai.ChatRequest into a strongly-typed OpenAIChatRequest.
+// This ensures that any function arguments (json.RawMessage) are converted into
+// a JSON text string as required by the OpenAI API.
+func ToOpenAIChatRequest(req *ai.ChatRequest) OpenAIChatRequest {
+	oaReq := OpenAIChatRequest{
+		Model:    req.Model,
+		Stream:   req.Stream,
+		Format:   req.Format,
+		Think:    req.Think,
+		Messages: make([]OpenAIMessage, 0, len(req.Messages)),
+		Tools:    req.Tools,
+	}
+
+	for _, m := range req.Messages {
+		oam := OpenAIMessage{
+			Role:             m.Role,
+			Content:          m.Content,
+			ReasoningContent: m.ReasoningContent,
+			Images:           m.Images,
+			ToolCallID:       m.ToolCallID,
+		}
+
+		if len(m.ToolCalls) > 0 {
+			oam.ToolCalls = make([]OpenAIToolCall, 0, len(m.ToolCalls))
+			for _, tc := range m.ToolCalls {
+				oaf := OpenAIFunction{
+					Name: tc.Function.Name,
+				}
+
+				if len(tc.Function.Arguments) > 0 {
+					oaf.Arguments = string(tc.Function.Arguments)
+				}
+
+				idx := tc.Index
+				oam.ToolCalls = append(oam.ToolCalls, OpenAIToolCall{
+					Index:    idx,
+					ID:       tc.ID,
+					Type:     tc.Type,
+					Function: oaf,
+				})
+			}
+		}
+
+		oaReq.Messages = append(oaReq.Messages, oam)
+	}
+
+	return oaReq
+}

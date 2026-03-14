@@ -121,3 +121,89 @@ func (c *ChatCompletionChunk) ToChatResponse() *ai.ChatResponse {
 
 	return resp
 }
+
+// --- Strongly typed OpenRouter request structures and helper conversion --- //
+
+// OpenRouterFunction models the function call structure expected by OpenRouter:
+// `arguments` must be a JSON string (i.e., a string containing JSON text).
+type OpenRouterFunction struct {
+	Name      string `json:"name,omitempty"`
+	Arguments string `json:"arguments,omitempty"`
+}
+
+// OpenRouterToolCall models a tool call inside a message for OpenRouter
+type OpenRouterToolCall struct {
+	Index    *int               `json:"index,omitempty"`
+	ID       string             `json:"id,omitempty"`
+	Type     string             `json:"type,omitempty"`
+	Function OpenRouterFunction `json:"function"`
+}
+
+// OpenRouterMessage is the message shape for OpenRouter requests
+type OpenRouterMessage struct {
+	Role             ai.MessageRole       `json:"role"`
+	Content          string               `json:"content"`
+	ReasoningContent string               `json:"thinking,omitempty"`
+	Images           []string             `json:"images,omitempty"`
+	ToolCalls        []OpenRouterToolCall `json:"tool_calls,omitempty"`
+	ToolCallID       string               `json:"tool_call_id,omitempty"`
+}
+
+// OpenRouterChatRequest is the strongly-typed request shape to send to OpenRouter
+type OpenRouterChatRequest struct {
+	Model    string               `json:"model"`
+	Stream   bool                 `json:"stream"`
+	Format   *ai.ResponseFormat   `json:"format,omitempty"`
+	Think    any                  `json:"think,omitempty"`
+	Messages []OpenRouterMessage  `json:"messages"`
+	Tools    []ai.Tool            `json:"tools,omitempty"`
+}
+
+// ToOpenRouterChatRequest converts a typed ai.ChatRequest into a strongly-typed OpenRouterChatRequest.
+// This ensures that any function arguments (json.RawMessage) are converted into
+// a JSON text string as required by OpenRouter/OpenAI-compatible APIs.
+func ToOpenRouterChatRequest(req *ai.ChatRequest) OpenRouterChatRequest {
+	orReq := OpenRouterChatRequest{
+		Model:    req.Model,
+		Stream:   req.Stream,
+		Format:   req.Format,
+		Think:    req.Think,
+		Messages: make([]OpenRouterMessage, 0, len(req.Messages)),
+		Tools:    req.Tools,
+	}
+
+	for _, m := range req.Messages {
+		orm := OpenRouterMessage{
+			Role:             m.Role,
+			Content:          m.Content,
+			ReasoningContent: m.ReasoningContent,
+			Images:           m.Images,
+			ToolCallID:       m.ToolCallID,
+		}
+
+		if len(m.ToolCalls) > 0 {
+			orm.ToolCalls = make([]OpenRouterToolCall, 0, len(m.ToolCalls))
+			for _, tc := range m.ToolCalls {
+				orf := OpenRouterFunction{
+					Name: tc.Function.Name,
+				}
+
+				if len(tc.Function.Arguments) > 0 {
+					orf.Arguments = string(tc.Function.Arguments)
+				}
+
+				idx := tc.Index
+				orm.ToolCalls = append(orm.ToolCalls, OpenRouterToolCall{
+					Index:    idx,
+					ID:       tc.ID,
+					Type:     tc.Type,
+					Function: orf,
+				})
+			}
+		}
+
+		orReq.Messages = append(orReq.Messages, orm)
+	}
+
+	return orReq
+}

@@ -19,16 +19,16 @@ type RegistryEvent struct {
 }
 
 type AgentDefinition struct {
-	Title         string
-	Description   string
-	SpawnFunction func(ctx context.Context, content string) AgentSessionInterface
+	spawnFunction func(ctx context.Context, content string) AgentSessionInterface
+	Title         string `json:"title"`
+	Description   string `json:"description"`
 }
 
 func NewAgentDefinition(title, description string, spawnFn func(ctx context.Context, content string) AgentSessionInterface) AgentDefinition {
 	return AgentDefinition{
 		Title:         title,
 		Description:   description,
-		SpawnFunction: spawnFn,
+		spawnFunction: spawnFn,
 	}
 }
 
@@ -107,7 +107,7 @@ func (r *AgentRegistry) SpawnAgent(ctx context.Context, typeName string, instanc
 		return nil, fmt.Errorf("agent instance %s already exists", instanceID)
 	}
 
-	session := agentDef.SpawnFunction(ctx, content)
+	session := agentDef.spawnFunction(ctx, content)
 	session.SetState(func(s *AgentState) {
 		s.Title = agentDef.Title
 		s.Type = typeName
@@ -130,7 +130,7 @@ func (r *AgentRegistry) RemoveAgent(instanceID string) {
 		delete(r.agents, instanceID)
 	}
 	r.mu.Unlock()
-	
+
 	if ok {
 		session.Stop()
 		r.emitEvent(RegistryEvent{
