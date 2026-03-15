@@ -383,3 +383,14 @@ func (td *ToolDefinition) WithTimeout(d time.Duration) *ToolDefinition {
 	td.Timeout = d
 	return td
 }
+
+func (td *ToolDefinition) ToTool() Tool {
+	return Tool{
+		Type: ToolTypeFunction,
+		Function: Function{
+			Name:        td.Name,
+			Description: td.Description,
+			Parameters:  td.Parameters,
+		},
+	}
+}

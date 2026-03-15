@@ -17,6 +17,7 @@ type AgentSessionInterface interface {
 	Stop()
 	GetState() AgentState
 	SetState(update func(*AgentState))
+	SetTools(tools []Tool)
 }
 
 // AgentState holds the current status and metadata of an agent session
@@ -116,6 +117,13 @@ func (a *AgentSession) SetState(update func(*AgentState)) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	update(&a.state)
+}
+
+// SetTools updates the tools available to the AI for subsequent requests.
+func (a *AgentSession) SetTools(tools []Tool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.rec.Tools = tools
 }
 
 // streamChat performs the streamed chat request and pipes the results into GlobalChan.
