@@ -220,3 +220,69 @@ func TestStreamAccumulator_Markdown(t *testing.T) {
 		t.Errorf("Expected fully terminated content %q, got %q", expected2, acc2.Content)
 	}
 }
+
+func TestStreamAccumulator_ToolCallSplitChunks_MissingIndexOnLaterChunk(t *testing.T) {
+	ctx := context.Background()
+	input := make(chan *ChatResponse)
+	output := StreamAccumulator(ctx, input, false)
+
+	// First chunk: full tool call metadata including index and id
+	idx0 := 0
+	chunks := []*ChatResponse{
+		{
+			Message: Message{
+				ToolCalls: []ToolCall{
+					{
+						Index: &idx0,
+						ID:    "call_1",
+						Type:  "function",
+						Function: FunctionCall{
+							Name:      "open_file",
+							Arguments: json.RawMessage(""),
+						},
+					},
+				},
+			},
+		},
+		// Second chunk: only provides the function arguments (no index, no id)
+		{
+			Message: Message{
+				ToolCalls: []ToolCall{
+					{
+						Function: FunctionCall{
+							Arguments: json.RawMessage(`{"path":"pkg/webagent/types.go"}`),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	go func() {
+		for _, c := range chunks {
+			input <- c
+		}
+		close(input)
+	}()
+
+	var lastAcc *AccumulatedResponse
+	for acc := range output {
+		lastAcc = acc
+	}
+
+	if lastAcc == nil {
+		t.Fatal("Expected at least one response")
+	}
+
+	// Expect a single tool call that merged the arguments into the original call
+	if len(lastAcc.ToolCalls) != 1 {
+		t.Fatalf("Expected 1 tool call after merge, got %d", len(lastAcc.ToolCalls))
+	}
+	tc := lastAcc.ToolCalls[0]
+	if tc.ID != "call_1" {
+		t.Errorf("Expected merged tool call ID 'call_1', got %s", tc.ID)
+	}
+	if string(tc.Function.Arguments) != `{"path":"pkg/webagent/types.go"}` {
+		t.Errorf("Expected merged arguments %q, got %q", `{"path":"pkg/webagent/types.go"}`, string(tc.Function.Arguments))
+	}
+}
