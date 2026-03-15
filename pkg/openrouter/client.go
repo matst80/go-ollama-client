@@ -30,6 +30,9 @@ func NewOpenRouterClient(url string, apiKey string) *OpenRouterClient {
 
 // WithLogFile sets the path to the log file where all OpenRouter response lines will be stored
 func (c *OpenRouterClient) WithLogFile(path string) *OpenRouterClient {
+	// Forward to the underlying ApiClient so logging is handled in one place.
+	// Keep the local `logPath` field for backward compatibility.
+	c.client.WithLogFile(path)
 	c.logPath = path
 	return c
 }

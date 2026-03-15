@@ -16,6 +16,13 @@ import (
 func main() {
 	ctx := context.Background()
 
+	// Enable a package-level default logfile for all ApiClient instances if the environment
+	// variable `AI_LOG_PATH` is set. This is picked up by NewApiClient so underlying clients
+	// (Ollama, OpenRouter, xAI, etc.) will inherit logging automatically.
+	if lp := os.Getenv("AI_LOG_PATH"); lp != "" {
+		ai.SetDefaultLogFile(lp)
+	}
+
 	// 1. Initialize AgentRegistry
 	registry := ai.NewAgentRegistry()
 
@@ -37,6 +44,10 @@ func main() {
 		"Cloud LLM powered by xAI (grok-beta)",
 		func(ctx context.Context, content string) ai.AgentSessionInterface {
 			client := xai.NewXAIClient("https://api.x.ai/v1", os.Getenv("XAI_API_KEY"))
+			// If a global log path is configured, make sure the client also has its local log path set.
+			if lp := os.Getenv("AI_LOG_PATH"); lp != "" {
+				client.WithLogFile(lp)
+			}
 			req := ai.NewChatRequest("grok-beta")
 			req.Messages = []ai.Message{{Role: ai.MessageRoleSystem, Content: content}}
 			return ai.NewAgentSession(ctx, client, req)
@@ -47,6 +58,10 @@ func main() {
 		"Cloud LLM powered by OpenRouter (hunter-alpha)",
 		func(ctx context.Context, content string) ai.AgentSessionInterface {
 			client := openrouter.NewOpenRouterClient("https://openrouter.ai", os.Getenv("OPENROUTER_API_KEY"))
+			// Ensure the OpenRouter client also gets its logfile set if provided.
+			if lp := os.Getenv("AI_LOG_PATH"); lp != "" {
+				client.WithLogFile(lp)
+			}
 			req := ai.NewChatRequest("openrouter/hunter-alpha")
 			req.Messages = []ai.Message{{Role: ai.MessageRoleSystem, Content: content}}
 			return ai.NewAgentSession(ctx, client, req)
@@ -62,6 +77,10 @@ func main() {
 
 	// 6. Setup Master Agent (using xAI here, but could be Gemini/Ollama)
 	masterClient := xai.NewXAIClient("https://api.x.ai/v1", os.Getenv("XAI_API_KEY"))
+	// Ensure master client logging is enabled locally as well when configured.
+	if lp := os.Getenv("AI_LOG_PATH"); lp != "" {
+		masterClient.WithLogFile(lp)
+	}
 	masterReq := ai.NewChatRequest("grok-4-1-fast-non-reasoning").
 		WithTools(masterToolRegistry.GetTools())
 

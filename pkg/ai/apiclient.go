@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"sync"
 	"time"
 )
 
@@ -15,6 +17,48 @@ type ApiClient struct {
 	httpClient *http.Client
 	headers    map[string]string
 	BaseUrl    string
+	// LogPath if set will cause requests and responses to be appended to this file.
+	LogPath string
+}
+
+// Package-level default log path used when creating new ApiClient instances.
+// Callers can set this to apply a default logfile across all clients created
+// with NewApiClient.
+var (
+	defaultLogMu   sync.Mutex
+	defaultLogPath string
+	// logFileMu serializes writes to logfile paths to avoid interleaved writes
+	// when multiple requests stream to the same file concurrently.
+	logFileMu sync.Mutex
+)
+
+// SetDefaultLogFile sets the package-level default logfile path. New clients
+// created after calling this will inherit the value.
+func SetDefaultLogFile(path string) {
+	defaultLogMu.Lock()
+	defer defaultLogMu.Unlock()
+	defaultLogPath = path
+}
+
+// lockedWriter writes to a file path and serializes writes using logFileMu so
+// multiple goroutines can safely write the stream contents without interleaving.
+type lockedWriter struct {
+	path string
+}
+
+func newLockedWriter(path string) io.Writer {
+	return &lockedWriter{path: path}
+}
+
+func (w *lockedWriter) Write(p []byte) (int, error) {
+	logFileMu.Lock()
+	defer logFileMu.Unlock()
+	f, err := os.OpenFile(w.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return 0, err
+	}
+	defer f.Close()
+	return f.Write(p)
 }
 
 func NewApiHttpClient() *http.Client {
@@ -41,11 +85,23 @@ func NewApiHttpClient() *http.Client {
 }
 
 func NewApiClient(baseUrl string, headers map[string]string) *ApiClient {
+	defaultLogMu.Lock()
+	dlp := defaultLogPath
+	defaultLogMu.Unlock()
+
 	return &ApiClient{
 		httpClient: NewApiHttpClient(),
 		headers:    headers,
 		BaseUrl:    baseUrl,
+		LogPath:    dlp,
 	}
+}
+
+// WithLogFile sets the filepath where requests and responses will be logged.
+// If set to an empty string (the default) no logging is performed.
+func (c *ApiClient) WithLogFile(path string) *ApiClient {
+	c.LogPath = path
+	return c
 }
 
 func (c *ApiClient) SetHeaders(headers map[string]string) {
@@ -80,6 +136,19 @@ func (c *ApiClient) PostJson(ctx context.Context, endpoint string, data any) (*h
 		return nil, err
 	}
 
+	// If logging enabled, wrap resp.Body with a TeeReader that writes bytes to the logfile
+	// as the caller reads them. This preserves streaming semantics while capturing the stream.
+	if c.LogPath != "" && resp != nil && resp.Body != nil {
+		timestamp := time.Now().Format(time.RFC3339)
+		w := newLockedWriter(c.LogPath)
+		// Synchronously log request metadata and the response status/headers
+		fmt.Fprintf(w, "-----\n[%s] REQUEST %s %s\nHeaders: %v\nBody: %s\n", timestamp, httpReq.Method, httpReq.URL.String(), httpReq.Header, string(jsonData))
+		fmt.Fprintf(w, "[%s] RESPONSE %s Status=%d\nHeaders: %v\nSTREAM:\n", timestamp, httpReq.URL.String(), resp.StatusCode, resp.Header)
+		// Create a TeeReader so that as the caller reads resp.Body, bytes are also written to the log.
+		tee := io.TeeReader(resp.Body, w)
+		resp.Body = io.NopCloser(tee)
+	}
+
 	return resp, nil
 }
 
@@ -94,6 +163,17 @@ func (c *ApiClient) GetJson(ctx context.Context, endpoint string) (*http.Respons
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
 		return nil, err
+	}
+
+	// Streaming-safe logging: wrap resp.Body in a TeeReader that writes to the locked writer
+	// so stream bytes are logged as they are consumed by the caller.
+	if c.LogPath != "" && resp != nil && resp.Body != nil {
+		timestamp := time.Now().Format(time.RFC3339)
+		w := newLockedWriter(c.LogPath)
+		fmt.Fprintf(w, "-----\n[%s] REQUEST %s %s\nHeaders: %v\n", timestamp, httpReq.Method, httpReq.URL.String(), httpReq.Header)
+		fmt.Fprintf(w, "[%s] RESPONSE %s Status=%d\nHeaders: %v\nSTREAM:\n", timestamp, httpReq.URL.String(), resp.StatusCode, resp.Header)
+		tee := io.TeeReader(resp.Body, w)
+		resp.Body = io.NopCloser(tee)
 	}
 
 	return resp, nil

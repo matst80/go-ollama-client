@@ -28,6 +28,11 @@ func NewOpenAIClient(url string, apiKey string) *OpenAIClient {
 
 // WithLogFile sets the path to the log file where all OpenAI response lines will be stored
 func (c *OpenAIClient) WithLogFile(path string) *OpenAIClient {
+	// Forward to the underlying ApiClient so logging is handled in one place.
+	// Keep the local `logPath` field for backward compatibility.
+	if c.client != nil {
+		c.client.WithLogFile(path)
+	}
 	c.logPath = path
 	return c
 }

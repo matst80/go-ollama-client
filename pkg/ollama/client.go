@@ -45,6 +45,15 @@ func (c *OllamaClient) WithAuth(auth string) *OllamaClient {
 	return c
 }
 
+// WithLogFile sets the path to the log file where all Ollama request/response data will be stored.
+// It forwards the path to the underlying ApiClient so logging is handled centrally.
+func (c *OllamaClient) WithLogFile(path string) *OllamaClient {
+	if c.client != nil {
+		c.client.WithLogFile(path)
+	}
+	return c
+}
+
 // Chat handles a non-streaming request to Ollama and returns the full ChatResponse
 func (c *OllamaClient) Chat(ctx context.Context, req ai.ChatRequest) (*ai.ChatResponse, error) {
 	req.Stream = false
