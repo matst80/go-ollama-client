@@ -40,7 +40,6 @@ type AgentSession struct {
 	ctx        context.Context
 	cancel     context.CancelFunc
 	mu         sync.Mutex
-	wg         sync.WaitGroup
 	state      AgentState
 }
 
@@ -61,7 +60,6 @@ func NewAgentSession(ctx context.Context, client ChatClientInterface, req *ChatR
 			CreatedAt:  time.Now(),
 			LastActive: time.Now(),
 		},
-		wg: sync.WaitGroup{},
 	}
 	for _, opt := range opts {
 		opt(session)
@@ -81,9 +79,8 @@ func (a *AgentSession) Stop() {
 }
 
 // SendUserMessage appends a user message to the request and triggers a streaming chat.
-// It waits for any previous stream to finish.
+// It serializes request mutation and stream startup under the session mutex.
 func (a *AgentSession) SendUserMessage(ctx context.Context, msg string) error {
-	a.wg.Wait()
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.rec.AddMessage(MessageRoleUser, msg)
@@ -91,9 +88,8 @@ func (a *AgentSession) SendUserMessage(ctx context.Context, msg string) error {
 }
 
 // SendMessages appends one or more pre-constructed messages (like tool results) and triggers a streaming chat.
-// It waits for any previous stream to finish.
+// It serializes request mutation and stream startup under the session mutex.
 func (a *AgentSession) SendMessages(ctx context.Context, msgs ...Message) error {
-	a.wg.Wait()
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.rec.Messages = append(a.rec.Messages, msgs...)
@@ -192,7 +188,6 @@ func (a *AgentSession) streamChat(ctx context.Context) error {
 	// Use StreamAccumulator to get accumulated responses
 	accCh := StreamAccumulator(ctx, ch, false)
 
-	a.wg.Add(1)
 	go func() {
 		var last *AccumulatedResponse
 		for res := range accCh {
@@ -218,7 +213,6 @@ func (a *AgentSession) streamChat(ctx context.Context) error {
 			})
 			a.mu.Unlock()
 		}
-		a.wg.Done()
 	}()
 
 	return nil
