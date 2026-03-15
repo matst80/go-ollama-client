@@ -14,6 +14,7 @@ type AgentSessionInterface interface {
 	SendMessages(ctx context.Context, msgs ...Message) error
 	Recv() <-chan AccumulatedResponse
 	GetMessageHistory() []Message
+	GetModel() string
 	Stop()
 	GetState() AgentState
 	SetState(update func(*AgentState))
@@ -101,6 +102,10 @@ func (a *AgentSession) GetMessageHistory() []Message {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.rec.Messages
+}
+
+func (a *AgentSession) GetModel() string {
+	return a.rec.Model
 }
 
 func (a *AgentSession) GetState() AgentState {

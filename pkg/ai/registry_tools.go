@@ -81,7 +81,7 @@ func (h *RegistryToolHandler) GetTools() []Tool {
 }
 
 func (h *RegistryToolHandler) spawnAgent(args SpawnAgentArgs) string {
-	_, err := h.Registry.SpawnAgent(context.Background(), args.TypeName, args.InstanceID, args.Content, "")
+	_, err := h.Registry.SpawnAgent(context.Background(), args.TypeName, args.InstanceID, args.Content, "master")
 	if err != nil {
 		return fmt.Sprintf("failed to spawn agent: %v", err)
 	}
