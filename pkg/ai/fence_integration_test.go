@@ -59,13 +59,18 @@ func TestFenceIntegration_WriteAndCommit(t *testing.T) {
 	for range out2 {
 	}
 
-	// check git log has commit
-	if out, err := exec.Command("git", "-C", repo, "log", "--oneline").CombinedOutput(); err != nil {
-		t.Fatalf("git log failed: %v: %s", err, string(out))
-	} else {
-		// expect at least one commit
-		if len(out) == 0 {
-			t.Fatalf("expected git commit, log empty")
+	// Confirm that the OperationHandler produced a commit report
+	reports := dp.PopReports()
+	found := false
+	for _, r := range reports {
+		if r.Op == "commit" {
+			found = true
+			if !r.Success {
+				t.Fatalf("commit reported failure: %s", r.Message)
+			}
 		}
+	}
+	if !found {
+		t.Fatalf("expected commit report, none found; reports=%+v", reports)
 	}
 }
