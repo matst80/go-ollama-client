@@ -13,13 +13,15 @@ import (
 func TestFenceIntegration_WriteAndCommit(t *testing.T) {
 	tmp := t.TempDir()
 	repo := tmp
-	// init git repo
-	if out, err := exec.Command("git", "init").CombinedOutput(); err != nil {
-		t.Fatalf("git init failed: %v: %s", err, string(out))
-	}
-	// make sure we run init in tmp
+	// init git repo in tmp and set basic config so commits succeed
 	if out, err := exec.Command("git", "-C", repo, "init").CombinedOutput(); err != nil {
 		t.Fatalf("git init in tmp failed: %v: %s", err, string(out))
+	}
+	if out, err := exec.Command("git", "-C", repo, "config", "user.name", "Test").CombinedOutput(); err != nil {
+		t.Fatalf("git config user.name failed: %v: %s", err, string(out))
+	}
+	if out, err := exec.Command("git", "-C", repo, "config", "user.email", "test@example.com").CombinedOutput(); err != nil {
+		t.Fatalf("git config user.email failed: %v: %s", err, string(out))
 	}
 
 	// create parser and handler
