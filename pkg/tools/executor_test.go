@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -36,7 +37,7 @@ func TestToolExecutor_NoReturn(t *testing.T) {
 		},
 	}
 
-	results, err := executor.HandleCalls(calls)
+	results, err := executor.HandleCalls(context.Background(), calls)
 	if err != nil {
 		t.Fatalf("HandleCalls returned error: %v", err)
 	}
@@ -82,7 +83,7 @@ func TestToolExecutor_UnmarshalError(t *testing.T) {
 		},
 	}
 
-	results, err := executor.HandleCalls(calls)
+	results, err := executor.HandleCalls(context.Background(), calls)
 	if err != nil {
 		t.Fatalf("HandleCalls returned error: %v", err)
 	}
@@ -151,7 +152,7 @@ func TestToolExecutor_DuplicateAndEmptyID(t *testing.T) {
 		},
 	}
 
-	results, err := executor.HandleCalls(calls)
+	results, err := executor.HandleCalls(context.Background(), calls)
 	if err != nil {
 		t.Fatalf("HandleCalls returned error: %v", err)
 	}
@@ -194,7 +195,7 @@ func TestToolExecutor_UnknownToolNotIgnored(t *testing.T) {
 		},
 	}
 
-	results, err := executor.HandleCalls(calls)
+	results, err := executor.HandleCalls(context.Background(), calls)
 	if err != nil {
 		t.Fatalf("HandleCalls returned error: %v", err)
 	}
@@ -237,7 +238,7 @@ func TestToolExecutor_MultipleReturnValues(t *testing.T) {
 		},
 	}
 
-	results, err := executor.HandleCalls(calls)
+	results, err := executor.HandleCalls(context.Background(), calls)
 	if err != nil {
 		t.Fatalf("HandleCalls returned error: %v", err)
 	}

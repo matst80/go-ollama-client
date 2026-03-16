@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
 
 	"github.com/matst80/go-ai-agent/pkg/ai"
@@ -28,6 +30,9 @@ func NewOpenRouterClient(url string, apiKey string) *OpenRouterClient {
 
 // WithLogFile sets the path to the log file where all OpenRouter response lines will be stored
 func (c *OpenRouterClient) WithLogFile(path string) *OpenRouterClient {
+	// Forward to the underlying ApiClient so logging is handled in one place.
+	// Keep the local `logPath` field for backward compatibility.
+	c.client.WithLogFile(path)
 	c.logPath = path
 	return c
 }
@@ -36,14 +41,22 @@ func (c *OpenRouterClient) WithLogFile(path string) *OpenRouterClient {
 func (c *OpenRouterClient) Chat(ctx context.Context, req ai.ChatRequest) (*ai.ChatResponse, error) {
 	req.Stream = false
 
-	resp, err := c.client.PostJson(ctx, string(ChatEndpoint), req)
+	// Convert to strongly-typed OpenRouter request where function arguments are JSON strings.
+	orReq := ToOpenRouterChatRequest(&req)
+
+	resp, err := c.client.PostJson(ctx, string(ChatEndpoint), orReq)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("OpenRouter request failed with status %d", resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		reqBody, _ := json.Marshal(orReq)
+		log.Printf("OpenRouter error: status=%d", resp.StatusCode)
+		log.Printf("Request\n%s", reqBody)
+		log.Printf("Response\n%s", body)
+		return nil, fmt.Errorf("OpenRouter request failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
 	decoder := json.NewDecoder(resp.Body)
@@ -63,7 +76,10 @@ func (c *OpenRouterClient) ChatStreamed(ctx context.Context, req ai.ChatRequest,
 	req.Stream = true
 	defer close(ch)
 
-	resp, err := c.client.PostJson(ctx, string(ChatEndpoint), req)
+	// Convert to strongly-typed OpenRouter request where function arguments are JSON strings.
+	orReq := ToOpenRouterChatRequest(&req)
+
+	resp, err := c.client.PostJson(ctx, string(ChatEndpoint), orReq)
 	if err != nil {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -73,7 +89,10 @@ func (c *OpenRouterClient) ChatStreamed(ctx context.Context, req ai.ChatRequest,
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("OpenRouter request failed with status %d", resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		reqBody, _ := json.Marshal(orReq)
+		log.Printf("OpenRouter error: status=%d, request=%s, response=%s", resp.StatusCode, string(reqBody), string(body))
+		return fmt.Errorf("OpenRouter request failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
 	var chatResp ChatCompletionChunk

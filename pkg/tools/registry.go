@@ -10,14 +10,14 @@ import (
 
 // Registry maintains a list of tools that can be used by the model
 type Registry struct {
-	tools map[string]ai.ToolDefinition
+	tools map[string]*ai.ToolDefinition
 	Tools []ai.Function
 }
 
 // NewRegistry creates a new tool registry
 func NewRegistry() *Registry {
 	return &Registry{
-		tools: make(map[string]ai.ToolDefinition),
+		tools: make(map[string]*ai.ToolDefinition),
 	}
 }
 
@@ -35,8 +35,8 @@ func (r *Registry) Register(name, description string, args any, fn any) error {
 	if err != nil {
 		return err
 	}
-
-	r.tools[name] = *toolDef
+	// turbo-all
+	r.tools[name] = toolDef
 
 	return nil
 }
@@ -45,7 +45,7 @@ func (r *Registry) RegisterTool(tool ai.ToolDefinition) error {
 	if _, ok := r.tools[tool.Name]; ok {
 		return fmt.Errorf("tool %s already registered", tool.Name)
 	}
-	r.tools[tool.Name] = tool
+	r.tools[tool.Name] = &tool
 	return nil
 }
 
@@ -57,7 +57,7 @@ func (r *Registry) RegisterTools(tools ...ai.ToolDefinition) {
 
 func (r *Registry) GetTool(name string) (*ai.ToolDefinition, bool) {
 	def, ok := r.tools[name]
-	return &def, ok
+	return def, ok
 }
 
 // GetTools returns the tools in a format generic format

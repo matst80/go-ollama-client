@@ -346,6 +346,7 @@ type ToolDefinition struct {
 	Enabled     bool
 	ArgsType    reflect.Type
 	Handler     reflect.Value
+	Timeout     time.Duration
 }
 
 func GetToolDefinition(name, description string, args any, fn any) (*ToolDefinition, error) {
@@ -356,7 +357,6 @@ func GetToolDefinition(name, description string, args any, fn any) (*ToolDefinit
 			return nil, fmt.Errorf("handler must be a function")
 		}
 	}
-
 
 	argType := reflect.TypeOf(args)
 	if argType.Kind() == reflect.Ptr {
@@ -374,5 +374,22 @@ func GetToolDefinition(name, description string, args any, fn any) (*ToolDefinit
 		ArgsType:    argType,
 		Handler:     v,
 		Parameters:  generateJSONSchema(argType),
+		Timeout:     30 * time.Second,
 	}, nil
+}
+
+func (td *ToolDefinition) WithTimeout(d time.Duration) *ToolDefinition {
+	td.Timeout = d
+	return td
+}
+
+func (td *ToolDefinition) ToTool() Tool {
+	return Tool{
+		Type: ToolTypeFunction,
+		Function: Function{
+			Name:        td.Name,
+			Description: td.Description,
+			Parameters:  td.Parameters,
+		},
+	}
 }

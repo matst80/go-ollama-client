@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
 
 	"github.com/matst80/go-ai-agent/pkg/ai"
@@ -43,6 +45,15 @@ func (c *OllamaClient) WithAuth(auth string) *OllamaClient {
 	return c
 }
 
+// WithLogFile sets the path to the log file where all Ollama request/response data will be stored.
+// It forwards the path to the underlying ApiClient so logging is handled centrally.
+func (c *OllamaClient) WithLogFile(path string) *OllamaClient {
+	if c.client != nil {
+		c.client.WithLogFile(path)
+	}
+	return c
+}
+
 // Chat handles a non-streaming request to Ollama and returns the full ChatResponse
 func (c *OllamaClient) Chat(ctx context.Context, req ai.ChatRequest) (*ai.ChatResponse, error) {
 	req.Stream = false
@@ -54,7 +65,10 @@ func (c *OllamaClient) Chat(ctx context.Context, req ai.ChatRequest) (*ai.ChatRe
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("ollama request failed with status %d", resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		reqJson, _ := json.Marshal(req)
+		log.Printf("Ollama error: status=%d, request=%s, response=%s", resp.StatusCode, string(reqJson), string(body))
+		return nil, fmt.Errorf("ollama request failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
 	decoder := json.NewDecoder(resp.Body)
@@ -67,7 +81,13 @@ func (c *OllamaClient) Chat(ctx context.Context, req ai.ChatRequest) (*ai.ChatRe
 }
 
 // ChatStreamed handles the streaming request to Ollama and returns an error if the request or streaming fails.
-func (c *OllamaClient) ChatStreamed(ctx context.Context, req ai.ChatRequest, ch chan *ai.ChatResponse) error {
+func (c *OllamaClient) ChatStreamed(ctx context.Context, ireq ai.ChatRequest, ch chan *ai.ChatResponse) error {
+	req := OllamaChatRequest{
+		ChatRequest: &ireq,
+		Options: &ModelOptions{
+			ContextWindowSize: 32 * 1024,
+		},
+	}
 	req.Stream = true
 	defer close(ch)
 
@@ -112,7 +132,10 @@ func (c *OllamaClient) Generate(ctx context.Context, req ai.GenerateRequest) (*a
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("ollama request failed with status %d", resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		reqJson, _ := json.Marshal(req)
+		log.Printf("Ollama error: status=%d, request=%s, response=%s", resp.StatusCode, string(reqJson), string(body))
+		return nil, fmt.Errorf("ollama request failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
 	decoder := json.NewDecoder(resp.Body)

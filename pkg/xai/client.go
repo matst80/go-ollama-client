@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-
+	"log"
 	"net/http"
 
 	"github.com/matst80/go-ai-agent/pkg/ai"
@@ -30,6 +30,11 @@ func NewXAIClient(url string, apiKey string) *XAIClient {
 
 // WithLogFile sets the path to the log file where all xAI response lines will be stored
 func (c *XAIClient) WithLogFile(path string) *XAIClient {
+	// Forward to the underlying ApiClient so logging is handled in one place.
+	// Keep the local `logPath` field for backward compatibility.
+	if c.client != nil {
+		c.client.WithLogFile(path)
+	}
 	c.logPath = path
 	return c
 }
@@ -48,7 +53,10 @@ func (c *XAIClient) Chat(ctx context.Context, req ai.ChatRequest) (*ai.ChatRespo
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("xAI request failed with status %d", resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		reqJson, _ := json.Marshal(xReq)
+		log.Printf("xAI error: status=%d, request=%s, response=%s", resp.StatusCode, string(reqJson), string(body))
+		return nil, fmt.Errorf("xAI request failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
 	decoder := json.NewDecoder(resp.Body)
@@ -78,15 +86,9 @@ func (c *XAIClient) ChatStreamed(ctx context.Context, req ai.ChatRequest, ch cha
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return fmt.Errorf("xAI request failed with status %d and error reading body: %w", resp.StatusCode, err)
-		}
-		// reqJson, err := json.Marshal(xReq)
-		// if err != nil {
-		// 	return fmt.Errorf("xAI request failed with status %d and error marshaling request: %w", resp.StatusCode, err)
-		// }
-		//fmt.Printf("Request:\n%s\n", reqJson)
+		body, _ := io.ReadAll(resp.Body)
+		reqJson, _ := json.Marshal(xReq)
+		log.Printf("xAI error: status=%d, request=%s, response=%s", resp.StatusCode, string(reqJson), string(body))
 		return fmt.Errorf("xAI request failed with status %d: %s", resp.StatusCode, string(body))
 	}
 

@@ -3,25 +3,58 @@ package ai
 import (
 	"context"
 	"fmt"
+	"strings"
+	"sync"
+	"time"
 )
 
 type AgentSessionOption func(*AgentSession)
 
 type AgentSessionInterface interface {
 	SendUserMessage(ctx context.Context, msg string) error
+	SendMessages(ctx context.Context, msgs ...Message) error
 	Recv() <-chan AccumulatedResponse
 	GetMessageHistory() []Message
+	GetModel() string
 	Stop()
+	GetState() AgentState
+	SetState(update func(*AgentState))
+	SetTools(tools []Tool)
+}
+
+// AgentState holds the current status and metadata of an agent session
+type AgentState struct {
+	Status        string
+	CurrentOutput string
+	ParentID      string
+	Title         string
+	Type          string
+	CreatedAt     time.Time
+	LastActive    time.Time
 }
 
 // AgentSession manages a continuous chat session, tracking the underlying ChatRequest
 // and providing a single global channel for responses of type T.
 type AgentSession struct {
-	client     ChatClientInterface
-	rec        *ChatRequest
-	globalChan chan AccumulatedResponse
-	ctx        context.Context
-	cancel     context.CancelFunc
+	client           ChatClientInterface
+	rec              *ChatRequest
+	globalChan       chan AccumulatedResponse
+	ctx              context.Context
+	cancel           context.CancelFunc
+	mu               sync.Mutex
+	state            AgentState
+	truncationConfig *TruncationConfig
+	// optional repository root used by the diff parser
+	repoRoot string
+	// optional operation handler used by the diff parser
+	opHandler OperationHandler
+	// internal parser instance (set when a stream starts)
+	diffParser *DiffParser
+}
+
+// TruncationConfig holds optional truncation settings for a session.
+type TruncationConfig struct {
+	Strategy TruncationStrategy
 }
 
 // NewAgentSession creates a new AgentSession with the given client and base request.
@@ -36,11 +69,37 @@ func NewAgentSession(ctx context.Context, client ChatClientInterface, req *ChatR
 		globalChan: make(chan AccumulatedResponse, 100),
 		ctx:        ctx,
 		cancel:     cancel,
+		state: AgentState{
+			Status:     "idle",
+			CreatedAt:  time.Now(),
+			LastActive: time.Now(),
+		},
 	}
 	for _, opt := range opts {
 		opt(session)
 	}
 	return session
+}
+
+// WithRepoRoot configures a repo root path used by the diff parser.
+func WithRepoRoot(path string) AgentSessionOption {
+	return func(a *AgentSession) {
+		a.repoRoot = path
+	}
+}
+
+// WithOperationHandler sets a composable OperationHandler for streamed diff operations.
+func WithOperationHandler(h OperationHandler) AgentSessionOption {
+	return func(a *AgentSession) {
+		a.opHandler = h
+	}
+}
+
+// WithTruncation returns an AgentSessionOption that configures a truncation strategy.
+func WithTruncation(strategy TruncationStrategy) AgentSessionOption {
+	return func(a *AgentSession) {
+		a.truncationConfig = &TruncationConfig{Strategy: strategy}
+	}
 }
 
 // Recv returns a receive-only channel for all chat responses across multiple turns.
@@ -55,35 +114,158 @@ func (a *AgentSession) Stop() {
 }
 
 // SendUserMessage appends a user message to the request and triggers a streaming chat.
+// It serializes request mutation and stream startup under the session mutex.
 func (a *AgentSession) SendUserMessage(ctx context.Context, msg string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	a.rec.AddMessage(MessageRoleUser, msg)
+	// Apply truncation if configured (must run while locked)
+	a.applyTruncationLocked()
 	return a.streamChat(ctx)
 }
 
 // SendMessages appends one or more pre-constructed messages (like tool results) and triggers a streaming chat.
+// It serializes request mutation and stream startup under the session mutex.
 func (a *AgentSession) SendMessages(ctx context.Context, msgs ...Message) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	a.rec.Messages = append(a.rec.Messages, msgs...)
+	// Apply truncation if configured (must run while locked)
+	a.applyTruncationLocked()
 	return a.streamChat(ctx)
+}
+
+// applyTruncationLocked applies the configured truncation strategy to a.rec.Messages.
+// Caller must hold a.mu.
+func (a *AgentSession) applyTruncationLocked() {
+	if a.truncationConfig == nil || a.truncationConfig.Strategy == nil {
+		return
+	}
+
+	// Make a copy for strategy to inspect
+	msgs := a.rec.Messages
+	truncated, removed := a.truncationConfig.Strategy.Apply(msgs)
+	if removed <= 0 {
+		return
+	}
+
+	// Replace messages with truncated result
+	a.rec.Messages = truncated
 }
 
 // GetMessageHistory returns the current conversation history.
 func (a *AgentSession) GetMessageHistory() []Message {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	return a.rec.Messages
+}
+
+func (a *AgentSession) GetModel() string {
+	return a.rec.Model
+}
+
+func (a *AgentSession) GetState() AgentState {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.state
+}
+
+func (a *AgentSession) SetState(update func(*AgentState)) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	update(&a.state)
+}
+
+// SetTools updates the tools available to the AI for subsequent requests.
+func (a *AgentSession) SetTools(tools []Tool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.rec.Tools = tools
 }
 
 // streamChat performs the streamed chat request and pipes the results into GlobalChan.
 func (a *AgentSession) streamChat(ctx context.Context) error {
 	ch := make(chan *ChatResponse)
 
-	// Start the request in a goroutine
+	// Start the request in a goroutine with retry logic
 	go func() {
-		if err := a.client.ChatStreamed(ctx, *a.rec, ch); err != nil {
-			fmt.Printf("ChatStreamed error: %v\n", err)
+		defer close(ch)
+
+		maxRetries := 3
+		var lastErr error
+		for i := 0; i < maxRetries; i++ {
+			if i > 0 {
+				fmt.Printf("Retrying ChatStreamed (%d/%d)... error was: %v\n", i, maxRetries, lastErr)
+			}
+
+			// Create a temporary channel for this attempt
+			tempCh := make(chan *ChatResponse)
+
+			// We need a separate goroutine because ChatStreamed is blocking
+			go func() {
+				a.SetState(func(as *AgentState) {
+					as.Status = "waiting"
+					as.LastActive = time.Now()
+				})
+				defer a.SetState(func(as *AgentState) {
+					as.Status = "idle"
+					as.LastActive = time.Now()
+				})
+				err := a.client.ChatStreamed(ctx, *a.rec, tempCh)
+				if err != nil {
+					lastErr = err
+				}
+			}()
+
+			// Pipe tempCh to ch
+			success := false
+			for res := range tempCh {
+				ch <- res
+				success = true
+			}
+
+			if success && lastErr == nil {
+				return
+			}
+
+			// If context is cancelled, don't retry
+			if ctx.Err() != nil {
+				break
+			}
+		}
+
+		if lastErr != nil {
+			errStr := lastErr.Error()
+			fmt.Printf("ChatStreamed failed after %d retries: %v\n", maxRetries, lastErr)
+			ch <- &ChatResponse{
+				BaseResponse: &BaseResponse{
+					Error: &errStr,
+					Done:  true,
+				},
+			}
 		}
 	}()
 
-	// Use StreamAccumulator to get accumulated responses
-	accCh := StreamAccumulator(ctx, ch, false)
+	// Create a DiffParser and attach it to the accumulated stream so file/patch
+	// NDJSON events are processed as they arrive. Replace the repoRoot below
+	// with your workspace/repo path or wire it via an AgentSession option.
+	repo := "."
+	if a.repoRoot != "" {
+		repo = a.repoRoot
+	}
+	parser := NewDiffParser(repo)
+	// Optionally set custom handlers:
+	// parser.SetFileHandler(func(ctx context.Context, m *StreamMessage) error { ... })
+	if a.opHandler != nil {
+		parser.SetHandler(a.opHandler)
+	}
+	// store parser on session for later inspection (e.g., PopReports)
+	a.diffParser = parser
+
+	// Use StreamAccumulator to get accumulated responses and attach the
+	// fence-based message parser so fenced diffstream blocks are parsed
+	// before other consumers see the accumulated messages.
+	accCh := AttachMessageParserToAccumulator(ctx, StreamAccumulator(ctx, ch, false), NewFenceParser(), parser)
 
 	go func() {
 		var last *AccumulatedResponse
@@ -99,13 +281,46 @@ func (a *AgentSession) streamChat(ctx context.Context) error {
 		}
 
 		// When the stream is finished, append the assistant's final accumulated response to history
-		if last != nil {
+		// but only if it was successful (not an error and has content or tool calls)
+		if last != nil && (last.Chunk == nil || last.Chunk.Error == nil) {
+			a.mu.Lock()
 			a.rec.Messages = append(a.rec.Messages, Message{
 				Role:             MessageRoleAssistant,
 				Content:          last.Content,
 				ReasoningContent: last.ReasoningContent,
 				ToolCalls:        last.ToolCalls,
 			})
+			a.mu.Unlock()
+
+			// If the diff parser produced operation reports, emit a summary message back
+			if a.diffParser != nil {
+				reports := a.diffParser.PopReports()
+				if len(reports) > 0 {
+					// Build a simple textual summary
+					var sb strings.Builder
+					sb.WriteString("[diff-report]\n")
+					for _, r := range reports {
+						status := "OK"
+						if !r.Success {
+							status = "FAILED"
+						}
+						sb.WriteString(fmt.Sprintf("%s %s %s\n", status, r.Op, r.Path))
+						if r.Message != "" {
+							sb.WriteString("  -> " + r.Message + "\n")
+						}
+					}
+
+					// send as one final accumulated response so consumers see it
+					rep := AccumulatedResponse{
+						Chunk:   &ChatResponse{BaseResponse: &BaseResponse{Done: true}},
+						Content: sb.String(),
+					}
+					select {
+					case a.globalChan <- rep:
+					default:
+					}
+				}
+			}
 		}
 	}()
 

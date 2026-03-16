@@ -6,6 +6,8 @@ import (
 )
 
 // mergeToolCalls merges incoming tool calls into the existing slice, updating matching entries by ID or Index.
+// It also merges argument-only chunks (no ID and no Index) into the last existing tool call so that
+// tool calls split across streaming chunks are assembled into a single complete ToolCall.
 func mergeToolCalls(existing []ToolCall, incoming []ToolCall) []ToolCall {
 	if len(incoming) == 0 {
 		return existing
@@ -22,6 +24,8 @@ func mergeToolCalls(existing []ToolCall, incoming []ToolCall) []ToolCall {
 				// Update fields if they are provided in this chunk
 				if tc.ID != "" {
 					existing[i].ID = tc.ID
+				} else {
+					tc.ID = existing[i].ID
 				}
 				if tc.Function.Name != "" {
 					existing[i].Function.Name = tc.Function.Name
@@ -33,8 +37,10 @@ func mergeToolCalls(existing []ToolCall, incoming []ToolCall) []ToolCall {
 				// Accumulate arguments
 				if len(tc.Function.Arguments) > 0 {
 					if indexMatch {
+						// If we matched by index, append partial arguments to support chunked argument delivery
 						existing[i].Function.Arguments = append(existing[i].Function.Arguments, tc.Function.Arguments...)
 					} else {
+						// If matched by ID but not index, replace (this follows previous behavior)
 						existing[i].Function.Arguments = tc.Function.Arguments
 					}
 				}
@@ -42,9 +48,27 @@ func mergeToolCalls(existing []ToolCall, incoming []ToolCall) []ToolCall {
 				break
 			}
 		}
+
 		if !found {
-			// Append new tool call when no match was found
-			existing = append(existing, tc)
+			// Handle argument-only chunks: some providers send the tool call metadata (index/id/name)
+			// in one chunk and the raw arguments in a subsequent chunk that omits index/id.
+			// If the incoming call lacks ID and Index but contains arguments, merge those arguments
+			// into the last existing tool call (the most recent one), instead of appending a new call.
+			if tc.ID == "" && tc.Index == nil && len(tc.Function.Arguments) > 0 && len(existing) > 0 {
+				last := len(existing) - 1
+				// Update name/type if provided in this partial chunk
+				if tc.Function.Name != "" {
+					existing[last].Function.Name = tc.Function.Name
+				}
+				if tc.Type != "" {
+					existing[last].Type = tc.Type
+				}
+				// Append arguments to the last tool call to complete the JSON payload
+				existing[last].Function.Arguments = append(existing[last].Function.Arguments, tc.Function.Arguments...)
+			} else {
+				// Append new tool call when no match was found
+				existing = append(existing, tc)
+			}
 		}
 	}
 

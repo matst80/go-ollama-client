@@ -202,7 +202,7 @@ func (g *genContext) generateTopLevel(typeName string, schema map[string]interfa
 		props, _ := schema["properties"].(map[string]interface{})
 		required := stringSliceFromInterface(schema["required"])
 		// If no properties but additionalProperties exists, emit map alias
-		if (props == nil || len(props) == 0) && schema["additionalProperties"] != nil {
+		if len(props) == 0 && schema["additionalProperties"] != nil {
 			// map type
 			if ap, ok := schema["additionalProperties"].(map[string]interface{}); ok {
 				elem := g.resolveSchemaType(ap, typeName+"Additional")
