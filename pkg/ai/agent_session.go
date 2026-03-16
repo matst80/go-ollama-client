@@ -262,9 +262,10 @@ func (a *AgentSession) streamChat(ctx context.Context) error {
 	// store parser on session for later inspection (e.g., PopReports)
 	a.diffParser = parser
 
-	// Use StreamAccumulator to get accumulated responses and attach parser so
-	// parsing runs before other consumers see the accumulated messages.
-	accCh := AttachParserToAccumulator(ctx, StreamAccumulator(ctx, ch, false), parser)
+	// Use StreamAccumulator to get accumulated responses and attach the
+	// fence-based message parser so fenced diffstream blocks are parsed
+	// before other consumers see the accumulated messages.
+	accCh := AttachMessageParserToAccumulator(ctx, StreamAccumulator(ctx, ch, false), NewFenceParser(), parser)
 
 	go func() {
 		var last *AccumulatedResponse
