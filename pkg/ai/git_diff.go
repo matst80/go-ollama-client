@@ -53,6 +53,10 @@ func NewDiffParser(repoRoot string) *DiffParser {
 // DefaultOperationHandler applies unified git diffs and performs git commits.
 type DefaultOperationHandler struct{}
 
+func NewDiffOperationHandler() OperationHandler {
+	return &DefaultOperationHandler{}
+}
+
 func (d *DefaultOperationHandler) HandleDiff(ctx context.Context, repoRoot string, op *DiffOperation) OperationResult {
 	if op == nil {
 		return OperationResult{

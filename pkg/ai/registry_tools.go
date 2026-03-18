@@ -32,6 +32,11 @@ type MessageAgentArgs struct {
 	Message    string `json:"message" tool:"The message to send,required"`
 }
 
+// AgentStatusArgs requests status information for a running agent instance.
+type AgentStatusArgs struct {
+	InstanceID string `json:"instance_id" tool:"The ID of the running agent instance,required"`
+}
+
 type ListAgentsArgs struct{}
 
 type ListAgentTypesArgs struct{}
@@ -45,6 +50,7 @@ func (h *RegistryToolHandler) initTools() {
 	}{
 		{"spawn_agent", "Spawn a new agent instance of a given type. Use unique instance_id.", SpawnAgentArgs{}, h.spawnAgent},
 		{"message_agent", "Send a message to a running agent instance and wait for response.", MessageAgentArgs{}, h.messageAgent},
+		{"agent_status", "Get status of a running agent instance.", AgentStatusArgs{}, h.agentStatus},
 		{"list_agents", "List all currently running agent instances.", ListAgentsArgs{}, h.listAgents},
 		{"list_agent_types", "List all available agent types that can be spawned.", ListAgentTypesArgs{}, h.listAgentTypes},
 	}
@@ -119,6 +125,39 @@ func (h *RegistryToolHandler) messageAgent(args MessageAgentArgs) string {
 	}
 }
 
+// agentStatus returns a human-readable status summary for a running agent instance.
+func (h *RegistryToolHandler) agentStatus(args AgentStatusArgs) string {
+	agent, ok := h.Registry.GetAgent(args.InstanceID)
+	if !ok {
+		return fmt.Sprintf("agent instance '%s' not found", args.InstanceID)
+	}
+
+	state := agent.GetState()
+	msgs := agent.GetMessageHistory()
+
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "Agent %s status:\n", args.InstanceID)
+	fmt.Fprintf(&sb, "  Title: %s\n", state.Title)
+	fmt.Fprintf(&sb, "  Type: %s\n", state.Type)
+	fmt.Fprintf(&sb, "  Status: %s\n", state.Status)
+	fmt.Fprintf(&sb, "  ParentID: %s\n", state.ParentID)
+	fmt.Fprintf(&sb, "  CreatedAt: %v\n", state.CreatedAt)
+	fmt.Fprintf(&sb, "  LastActive: %v\n", state.LastActive)
+	fmt.Fprintf(&sb, "  Model: %s\n", agent.GetModel())
+	fmt.Fprintf(&sb, "  MessageCount: %d\n", len(msgs))
+	if len(msgs) > 0 {
+		last := msgs[len(msgs)-1]
+		preview := strings.TrimSpace(last.Content)
+		if len(preview) > 200 {
+			preview = preview[:200] + "..."
+		}
+		fmt.Fprintf(&sb, "  LastMessageRole: %s\n", last.Role)
+		fmt.Fprintf(&sb, "  LastMessagePreview: %s\n", preview)
+	}
+
+	return sb.String()
+}
+
 func (h *RegistryToolHandler) listAgents(args ListAgentsArgs) string {
 	agents := h.Registry.GetRunningAgents()
 	if len(agents) == 0 {
@@ -127,7 +166,7 @@ func (h *RegistryToolHandler) listAgents(args ListAgentsArgs) string {
 	var sb strings.Builder
 	sb.WriteString("Running agents:\n")
 	for id := range agents {
-		sb.WriteString(fmt.Sprintf("- %s\n", id))
+		fmt.Fprintf(&sb, "- %s\n", id)
 	}
 	return sb.String()
 }

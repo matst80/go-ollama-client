@@ -201,8 +201,81 @@ func main() {
 		}
 	}
 
+	fmt.Println("\n--- First message Completed ---")
+	fmt.Printf("List of agents:\n")
+	for id, agent := range toolHandler.Registry.GetRunningAgents() {
+		fmt.Printf("Agent %s history:\n", id)
+		for _, msg := range agent.GetMessageHistory() {
+			fmt.Printf("  %s: %s\n", msg.Role, msg.Content)
+		}
+	}
+
+	// 2. Ask the Master Agent to spawn an OpenRouter agent and talk to it
+	testPrompt2 := "Use a fenced `diff` block containing an exact unified git diff to create 'workspace/sky.md' with an explanation of why the sky is blue. Use standard new-file git diff format if the file does not exist. After applying the change, send a short confirmation message."
+	if err := masterSession.SendUserMessage(ctx, testPrompt2); err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+
+	for res := range masterSession.Recv() {
+		// Handle Tool Calls
+		if res.Chunk.Done && len(res.ToolCalls) > 0 {
+			results, err := executor.HandleCalls(ctx, res.ToolCalls)
+			if err != nil {
+				fmt.Printf("Tool execution error: %v\n", err)
+			}
+
+			var resultMsgs []ai.Message
+			for _, tr := range results {
+				msg := tr.ToResultMessage()
+				resultMsgs = append(resultMsgs, *msg)
+				fmt.Printf("\n[tool result] %s\n", msg.Content)
+			}
+
+			if len(resultMsgs) > 0 {
+				if err := masterSession.SendMessages(ctx, resultMsgs...); err != nil {
+					fmt.Printf("failed to deliver tool results: %v\n", err)
+				}
+			}
+		}
+
+		// UI Output (live update)
+		if res.Content != "" {
+			outStr := res.Content
+			lines := strings.Split(strings.TrimRight(outStr, "\n"), "\n")
+
+			diffLine := 0
+			for diffLine < len(lines) && diffLine < len(lastLines) && lines[diffLine] == lastLines[diffLine] {
+				diffLine++
+			}
+
+			if diffLine == len(lines) && len(lines) == len(lastLines) {
+				if res.Chunk.Done && len(res.ToolCalls) == 0 {
+					break
+				}
+				continue
+			}
+
+			if len(lastLines) > 0 {
+				moveUp := len(lastLines) - diffLine
+				if moveUp > 0 {
+					fmt.Printf("\033[%dA\r\033[J", moveUp)
+				}
+			}
+
+			for i := diffLine; i < len(lines); i++ {
+				fmt.Println(lines[i])
+			}
+			lastLines = lines
+		}
+
+		if res.Chunk.Done && len(res.ToolCalls) == 0 {
+			break
+		}
+	}
+
 	fmt.Println("\n--- Test Completed ---")
-	fmt.Printf("Final list of agents:\n")
+	fmt.Printf("List of agents:\n")
 	for id, agent := range toolHandler.Registry.GetRunningAgents() {
 		fmt.Printf("Agent %s history:\n", id)
 		for _, msg := range agent.GetMessageHistory() {

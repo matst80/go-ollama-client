@@ -224,7 +224,9 @@ func (a *AgentSession) streamChat(ctx context.Context) error {
 				success = true
 			}
 
-			if success && lastErr == nil {
+			// If success is true, we already sent chunks to the consumer.
+			// We MUST NOT retry because the accumulator already has these chunks.
+			if success || lastErr == nil {
 				return
 			}
 
@@ -288,6 +290,7 @@ func (a *AgentSession) streamChat(ctx context.Context) error {
 				ReasoningContent: last.ReasoningContent,
 				ToolCalls:        last.ToolCalls,
 			})
+			//	fmt.Printf("[AgentSession] Appended Assistant message. New history len: %d\n", len(a.rec.Messages))
 			a.mu.Unlock()
 
 			// If the diff parser produced operation reports, emit a summary message back

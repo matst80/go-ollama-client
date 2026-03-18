@@ -3,6 +3,7 @@ package ai
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"reflect"
 	"time"
 )
@@ -193,10 +194,14 @@ func NewChatRequest(model string) *ChatRequest {
 
 // AddMessage adds a simple message to the request
 func (r *ChatRequest) AddMessage(role MessageRole, content string) *ChatRequest {
+	for _, msg := range r.Messages {
+		log.Printf(" - %s: length: %d", msg.Role, len(msg.Content))
+	}
 	r.Messages = append(r.Messages, Message{
 		Role:    role,
 		Content: content,
 	})
+	fmt.Printf("[ChatRequest] AddMessage: role=%s, content_len=%d, new_history_len=%d\n", role, len(content), len(r.Messages))
 	return r
 }
 
