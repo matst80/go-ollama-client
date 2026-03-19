@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "browsermcp": {
+      "command": "/usr/local/bin/npx",
+      "args": ["-y", "@browsermcp/mcp@latest"],
+      "env": {}
+    }
+  }
+}

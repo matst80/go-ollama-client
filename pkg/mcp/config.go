@@ -26,17 +26,18 @@ type ConfigFile struct {
 // Note: Depending on the format, it might be nested under "mcpServers" like in Claude Config.
 // Let's assume the provided JSON is just a map of strings to ServerConfig.
 func (c *ConfigFile) UnmarshalJSON(data []byte) error {
+	// Try Claude's format first (nested under "mcpServers")
+	var claudeFormat struct {
+		MCPServers map[string]ServerConfig `json:"mcpServers"`
+	}
+	if err := json.Unmarshal(data, &claudeFormat); err == nil && len(claudeFormat.MCPServers) > 0 {
+		c.Servers = claudeFormat.MCPServers
+		return nil
+	}
+
+	// Try raw map format
 	var raw map[string]ServerConfig
 	if err := json.Unmarshal(data, &raw); err != nil {
-
-		// Fallback for Claude's format which wraps it in {"mcpServers": { ... }}
-		var claudeFormat struct {
-			MCPServers map[string]ServerConfig `json:"mcpServers"`
-		}
-		if err := json.Unmarshal(data, &claudeFormat); err == nil && len(claudeFormat.MCPServers) > 0 {
-			c.Servers = claudeFormat.MCPServers
-			return nil
-		}
 		return err
 	}
 	c.Servers = raw

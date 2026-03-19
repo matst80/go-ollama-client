@@ -269,8 +269,13 @@ func (a *AgentSession) streamChat(ctx context.Context) error {
 	// generic fenced block parser so exact fenced git diff blocks are parsed
 	// before other consumers see the accumulated messages.
 	accCh := AttachBlockParserToAccumulator(ctx, StreamAccumulator(ctx, ch, false), NewFenceParser(), NewGitDiffBlockHandler(parser))
-
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				// Handle panic on closed channel or other issues gracefully
+				fmt.Printf("Recovered in streamChat: %v\n", r)
+			}
+		}()
 		var last *AccumulatedResponse
 		for res := range accCh {
 			last = res
@@ -293,7 +298,6 @@ func (a *AgentSession) streamChat(ctx context.Context) error {
 				ReasoningContent: last.ReasoningContent,
 				ToolCalls:        last.ToolCalls,
 			})
-			//	fmt.Printf("[AgentSession] Appended Assistant message. New history len: %d\n", len(a.rec.Messages))
 			a.mu.Unlock()
 
 			// If the diff parser produced operation reports, emit a summary message back
@@ -321,6 +325,10 @@ func (a *AgentSession) streamChat(ctx context.Context) error {
 					}
 					select {
 					case a.globalChan <- rep:
+					case <-a.ctx.Done():
+						return
+					case <-ctx.Done():
+						return
 					default:
 					}
 				}

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/matst80/go-ai-agent/pkg/ai"
+	"github.com/matst80/go-ai-agent/pkg/mcp"
 	"github.com/matst80/go-ai-agent/pkg/ollama"
 	"github.com/matst80/go-ai-agent/pkg/openrouter"
 	"github.com/matst80/go-ai-agent/pkg/tools"
@@ -72,33 +73,37 @@ func main() {
 	// 4. Create RegistryToolHandler to expose registry operations as tools
 	toolHandler := ai.NewRegistryToolHandler(registry)
 
-	// 5. Setup Tool Registry for the "Master" agent
 	masterToolRegistry := tools.NewRegistry()
 	masterToolRegistry.RegisterTools(toolHandler.GetToolDefinitions()...)
 
-	// 6. Setup Master Agent (using xAI here, but could be Gemini/Ollama)
+	// 6. Setup MCP Servers
+	var mcpProxies []*mcp.ServerProxy
+	if _, err := os.Stat("mcp_config.json"); err == nil {
+		fmt.Println("Loading MCP servers from mcp_config.json...")
+		proxies, err := mcp.LoadAndRegisterServers(ctx, "mcp_config.json", masterToolRegistry)
+		if err != nil {
+			fmt.Printf("Warning: failed to load MCP servers: %v\n", err)
+		} else {
+			mcpProxies = proxies
+			fmt.Printf("Registered tools from %d MCP servers\n", len(mcpProxies))
+			// Print tool names for debugging
+			for _, tool := range masterToolRegistry.GetTools() {
+				fmt.Printf("Tool available: %s\n", tool.Function.Name)
+			}
+		}
+	}
+	defer func() {
+		for _, p := range mcpProxies {
+			p.Close()
+		}
+	}()
+
+	// 7. Setup Master Agent (using xAI here, but could be Gemini/Ollama)
 	masterClient := xai.NewXAIClient("https://api.x.ai/v1", os.Getenv("XAI_API_KEY"))
 	// Ensure master client logging is enabled locally as well when configured.
 	if lp := os.Getenv("AI_LOG_PATH"); lp != "" {
 		masterClient.WithLogFile(lp)
 	}
-	// System prompt: instruct the model how to emit streamed file operations.
-	// Require exact fenced git diffs using ```diff blocks whose bodies are valid
-	// unified diffs that can be passed directly to `git apply`.
-	// Example:
-	// ```diff
-	// --- a/main.go
-	// +++ b/main.go
-	// @@ -12,5 +12,5 @@ func add(a int, b int) int {
-	//  }
-	// +// Computes the sum of two integer arguments
-	// -// add is a simple function that returns the sum of two integers
-	//  func main() {
-	// ```
-	// Git diffs can also create new files by using the standard
-	// /dev/null -> b/path form in the patch.
-	// When operations are processed the agent will receive a [diff-report] summary
-	// listing OK/FAILED operations.
 
 	systemPrompt := "Output machine-actionable file changes using fenced `diff` blocks only. Do not emit surrounding prose when performing edits.\n" +
 		"Each fenced block must contain an exact unified git diff that can be applied directly with git apply.\n" +
@@ -122,7 +127,7 @@ func main() {
 		Model:                  masterReq.Model,
 		SummaryPrompt:          "Summarize the following conversation into concise bullets with any action items.",
 		Timeout:                10 * time.Second,
-		TokenEstimateThreshold: 2000,
+		TokenEstimateThreshold: 20000,
 		Logger:                 ai.NoopLogger{},
 	})
 
@@ -134,9 +139,9 @@ func main() {
 	defer masterSession.Stop()
 	executor := tools.NewToolExecutor(masterToolRegistry)
 
-	// 7. Simple Test: Ask the Master Agent to spawn an OpenRouter agent and talk to it
+	// 8. Simple Test: Ask the Master Agent to navigate with browser and screenshot
 	fmt.Println("--- Master Agent Session Started ---")
-	testPrompt := "Use a fenced `diff` block containing an exact unified git diff to create 'workspace/sky.md' with an explanation of why the sky is blue. Use standard new-file git diff format if the file does not exist. After applying the change, send a short confirmation message."
+	testPrompt := "List available tools. Then, use a browser tool to navigate to google.com. Tell me what you see."
 
 	if err := masterSession.SendUserMessage(ctx, testPrompt); err != nil {
 		fmt.Printf("Error: %v\n", err)
@@ -211,7 +216,7 @@ func main() {
 	}
 
 	// 2. Ask the Master Agent to spawn an OpenRouter agent and talk to it
-	testPrompt2 := "Use a fenced `diff` block containing an exact unified git diff to create 'workspace/sky.md' with an explanation of why the sky is blue. Use standard new-file git diff format if the file does not exist. After applying the change, send a short confirmation message."
+	testPrompt2 := "Can you search for the weather in tokyo in the browser?"
 	if err := masterSession.SendUserMessage(ctx, testPrompt2); err != nil {
 		fmt.Printf("Error: %v\n", err)
 		return
