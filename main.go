@@ -117,7 +117,7 @@ func main() {
 	}()
 
 	// Setup Master Agent (using GitHub for verification)
-	masterClient := ollama.NewOllamaClient("http://localhost:11434").WithDefaultModel("qwen3.5:9b")
+	masterClient := github.NewGitHubClient(os.Getenv("GITHUB_TOKEN"), "").WithDefaultModel("gpt-4o")
 	if lp := os.Getenv("AI_LOG_PATH"); lp != "" {
 		masterClient.WithLogFile(lp)
 	}
@@ -129,7 +129,7 @@ func main() {
 		"For new files, use standard git diff format such as --- /dev/null and +++ b/path/to/file.\n" +
 		"After processing, the system will emit a [diff-report] summary showing which operations succeeded or failed.\n"
 
-	masterReq := ai.NewChatRequest("qwen3.5:9b").WithTools(masterToolRegistry.GetTools())
+	masterReq := ai.NewDefaultChatRequest().WithTools(masterToolRegistry.GetTools())
 	// place the system prompt as the first message
 	masterReq.Messages = []ai.Message{{Role: ai.MessageRoleSystem, Content: systemPrompt}}
 

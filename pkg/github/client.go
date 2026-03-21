@@ -4,16 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+
 	"net/http"
 
 	"github.com/matst80/go-ai-agent/pkg/ai"
 	"github.com/matst80/go-ai-agent/pkg/openai"
 )
 
-// DefaultURL is the base URL for GitHub Models Inference API
+// DefaultURL is the base URL for GitHub Copilot Chat Completions API
 const DefaultURL = "https://models.github.ai"
 
-// GitHubClient handles interaction with the GitHub Models Inference API
+// GitHubClient handles interaction with the GitHub Copilot Chat Completions API
 type GitHubClient struct {
 	client       *ai.ApiClient
 	defaultModel string
@@ -22,11 +23,6 @@ type GitHubClient struct {
 
 // NewGitHubClient creates a new GitHub client
 func NewGitHubClient(apiKey string, apiVersion string) *GitHubClient {
-
-	if apiVersion == "" {
-		apiVersion = "2026-03-10"
-	}
-
 	headers := map[string]string{
 		"Authorization":        fmt.Sprintf("Bearer %s", apiKey),
 		"Accept":               "application/vnd.github+json",

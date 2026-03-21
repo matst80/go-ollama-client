@@ -33,6 +33,7 @@ func TestGitHubClient_ChatStreamed_ToolCalls(t *testing.T) {
 	defer server.Close()
 
 	client := NewGitHubClient("test-token", "")
+	client.client.BaseUrl = server.URL
 	req := ai.NewChatRequest("test-model")
 	ch := make(chan *ai.ChatResponse, 10)
 
@@ -85,31 +86,54 @@ func TestGitHubClient_ChatStreamed_ToolCalls(t *testing.T) {
 	}
 }
 
-func TestGitHubClient_GetModels(t *testing.T) {
+func TestGitHubClient_Chat_UsesCopilotEndpoint(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/catalog/models" {
-			t.Errorf("expected path /catalog/models, got %s", r.URL.Path)
+		if r.URL.Path != "/chat/completions" {
+			t.Errorf("expected path /chat/completions, got %s", r.URL.Path)
 		}
-		models := []ModelInfo{
-			{ID: "openai/gpt-4o", Name: "GPT-4o", Publisher: "OpenAI"},
-			{ID: "meta/llama-3-70b", Name: "Llama 3 70B", Publisher: "Meta"},
+		if got := r.Header.Get("Authorization"); got != "Bearer test-token" {
+			t.Errorf("expected Authorization header Bearer test-token, got %s", got)
 		}
+		if got := r.Header.Get("X-GitHub-Api-Version"); got != "" {
+			t.Errorf("expected no X-GitHub-Api-Version header, got %s", got)
+		}
+		if got := r.Header.Get("Accept"); got != "" {
+			t.Errorf("expected no Accept header, got %s", got)
+		}
+
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(models)
+		json.NewEncoder(w).Encode(map[string]any{
+			"id": "chatcmpl-1",
+			"choices": []map[string]any{
+				{
+					"index": 0,
+					"message": map[string]any{
+						"role":    "assistant",
+						"content": "hello from copilot",
+					},
+					"finish_reason": "stop",
+				},
+			},
+		})
 	}))
 	defer server.Close()
 
 	client := NewGitHubClient("test-token", "")
-	models, err := client.GetModels(context.Background())
+	client.client.BaseUrl = server.URL
+
+	req := ai.NewChatRequest("test-model")
+	req.Messages = []ai.Message{
+		{Role: ai.MessageRoleUser, Content: "hi"},
+	}
+
+	resp, err := client.Chat(context.Background(), *req)
 	if err != nil {
-		t.Fatalf("GetModels failed: %v", err)
+		t.Fatalf("Chat failed: %v", err)
 	}
-
-	if len(models) != 2 {
-		t.Fatalf("expected 2 models, got %d", len(models))
+	if resp == nil {
+		t.Fatal("expected response, got nil")
 	}
-
-	if models[0].ID != "openai/gpt-4o" {
-		t.Errorf("expected model ID openai/gpt-4o, got %s", models[0].ID)
+	if resp.Message.Content != "hello from copilot" {
+		t.Errorf("expected assistant content hello from copilot, got %s", resp.Message.Content)
 	}
 }

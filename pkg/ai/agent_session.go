@@ -60,6 +60,7 @@ type AgentSession struct {
 	stopOnce   sync.Once
 
 	autoToolHandler func(context.Context, []ToolCall) ([]Message, []AutoToolResult, error)
+	OnChatRequest   func(context.Context, *ChatRequest) error
 }
 
 // TruncationConfig holds optional truncation settings for a session.
@@ -120,6 +121,13 @@ func WithAutoToolExecutor(
 ) AgentSessionOption {
 	return func(a *AgentSession) {
 		a.autoToolHandler = handler
+	}
+}
+
+// WithOnChatRequest returns an AgentSessionOption that configures an OnChatRequest hook.
+func WithOnChatRequest(hook func(context.Context, *ChatRequest) error) AgentSessionOption {
+	return func(a *AgentSession) {
+		a.OnChatRequest = hook
 	}
 }
 
@@ -215,6 +223,11 @@ func (a *AgentSession) SetClient(client ChatClientInterface) {
 
 // streamChat performs the streamed chat request and pipes the results into GlobalChan.
 func (a *AgentSession) streamChat(ctx context.Context) error {
+	if a.OnChatRequest != nil {
+		if err := a.OnChatRequest(ctx, a.rec); err != nil {
+			return fmt.Errorf("OnChatRequest hook failed: %w", err)
+		}
+	}
 	ch := make(chan *ChatResponse)
 
 	// Start the request in a goroutine with retry logic

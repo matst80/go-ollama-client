@@ -13,8 +13,9 @@ import (
 
 // OllamaClient handles interaction with the Ollama API
 type OllamaClient struct {
-	client       *ai.ApiClient
-	defaultModel string
+	client         *ai.ApiClient
+	defaultOptions *ModelOptions
+	defaultModel   string
 }
 
 type OllamaEndpoint string
@@ -52,6 +53,11 @@ func (c *OllamaClient) WithDefaultModel(model string) *OllamaClient {
 	return c
 }
 
+func (c *OllamaClient) WithOptions(options *ModelOptions) *OllamaClient {
+	c.defaultOptions = options
+	return c
+}
+
 // WithLogFile sets the path to the log file where all Ollama request/response data will be stored.
 // It forwards the path to the underlying ApiClient so logging is handled centrally.
 func (c *OllamaClient) WithLogFile(path string) *OllamaClient {
@@ -67,8 +73,13 @@ func (c *OllamaClient) Chat(ctx context.Context, req ai.ChatRequest) (*ai.ChatRe
 		req.Model = c.defaultModel
 	}
 	req.Stream = false
+	
+	ollamaReq := OllamaChatRequest{
+		ChatRequest: &req,
+		Options:     c.defaultOptions,
+	}
 
-	resp, err := c.client.PostJson(ctx, string(ChatEndpoint), req)
+	resp, err := c.client.PostJson(ctx, string(ChatEndpoint), ollamaReq)
 	if err != nil {
 		return nil, err
 	}
@@ -95,11 +106,17 @@ func (c *OllamaClient) ChatStreamed(ctx context.Context, ireq ai.ChatRequest, ch
 	if ireq.Model == "" {
 		ireq.Model = c.defaultModel
 	}
+
+	opts := c.defaultOptions
+	if opts == nil {
+		opts = &ModelOptions{
+			ContextWindowSize: 32 * 1024,
+		}
+	}
+
 	req := OllamaChatRequest{
 		ChatRequest: &ireq,
-		Options: &ModelOptions{
-			ContextWindowSize: 32 * 1024,
-		},
+		Options:     opts,
 	}
 	req.Stream = true
 	defer close(ch)
