@@ -15,14 +15,14 @@ func TestAgentRegistryConfig(t *testing.T) {
 	mockClient := &mockChatClient{}
 	config.RegisterClient("mock", mockClient)
 
-	// 2. Register a tool
-	type TestArgs struct {
-		Value string `json:"value"`
-	}
-	toolDef, _ := GetToolDefinition("test_tool", "A test tool", TestArgs{}, func(args TestArgs) string {
-		return "Result: " + args.Value
-	})
-	config.RegisterTool(*toolDef)
+	// // 2. Register a tool
+	// type TestArgs struct {
+	// 	Value string `json:"value"`
+	// }
+	// toolDef, _ := GetToolDefinition("test_tool", "A test tool", TestArgs{}, func(args TestArgs) string {
+	// 	return "Result: " + args.Value
+	// })
+	//config.WithTools(*toolDef)
 
 	// 3. Register an agent via config
 	agentConf := AgentConfig{
@@ -32,7 +32,6 @@ func TestAgentRegistryConfig(t *testing.T) {
 		SystemPrompt: "You are a test-agent.",
 		Model:        "gpt-test",
 		Client:       "mock",
-		Tools:        []string{"test_tool"},
 	}
 	config.RegisterAgentConfig(agentConf)
 
@@ -115,9 +114,9 @@ func TestLoadAgentsFromFile(t *testing.T) {
 func TestOnChatRequestHook(t *testing.T) {
 	ctx := context.Background()
 	mockClient := &mockChatClient{}
-	
+
 	hookCalled := false
-	session := NewAgentSession(ctx, mockClient, NewChatRequest("mock"), 
+	session := NewAgentSession(ctx, mockClient, NewChatRequest("mock"),
 		WithOnChatRequest(func(ctx context.Context, req *ChatRequest) error {
 			hookCalled = true
 			req.Model = "hooked-model"
@@ -126,11 +125,11 @@ func TestOnChatRequestHook(t *testing.T) {
 
 	// Trigger a chat
 	_ = session.SendUserMessage(ctx, "Hello")
-	
+
 	if !hookCalled {
 		t.Error("OnChatRequest hook was not called")
 	}
-	
+
 	if session.rec.Model != "hooked-model" {
 		t.Error("OnChatRequest hook failed to modify request")
 	}

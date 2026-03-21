@@ -51,19 +51,19 @@ func NewAgentRegistry() *AgentRegistry {
 }
 
 type AgentConfig struct {
-	Name         string   `json:"name"`
-	Title        string   `json:"title"`
-	Description  string   `json:"description"`
-	SystemPrompt string   `json:"system_prompt"`
-	Model        string   `json:"model"`
-	Client       string   `json:"client"`
-	Tools        []string `json:"tools"`
+	tools        []Tool
+	Name         string `json:"name"`
+	Title        string `json:"title"`
+	Description  string `json:"description"`
+	SystemPrompt string `json:"system_prompt"`
+	Model        string `json:"model"`
+	Client       string `json:"client"`
 }
 
 type AgentRegistryConfig struct {
 	Clients map[string]ChatClientInterface
 	Agents  map[string]AgentConfig
-	Tools   map[string]ToolDefinition
+	Tools   []Tool
 	OnSpawn func(context.Context, string, AgentSessionInterface)
 }
 
@@ -71,7 +71,7 @@ func NewAgentRegistryConfig() *AgentRegistryConfig {
 	return &AgentRegistryConfig{
 		Clients: make(map[string]ChatClientInterface),
 		Agents:  make(map[string]AgentConfig),
-		Tools:   make(map[string]ToolDefinition),
+		Tools:   make([]Tool, 0),
 	}
 }
 
@@ -80,8 +80,8 @@ func (c *AgentRegistryConfig) RegisterClient(name string, client ChatClientInter
 	return c
 }
 
-func (c *AgentRegistryConfig) RegisterTool(tool ToolDefinition) *AgentRegistryConfig {
-	c.Tools[tool.Name] = tool
+func (c *AgentRegistryConfig) WithTools(tools ...Tool) *AgentRegistryConfig {
+	c.Tools = append(c.Tools, tools...)
 	return c
 }
 
@@ -102,7 +102,7 @@ func (c *AgentRegistryConfig) LoadAgentsFromFile(path string) error {
 	for _, a := range agents {
 		// Ensure name is set if key is name
 		if a.Name == "" {
-			// If it's a map, we might need to handle it differently, 
+			// If it's a map, we might need to handle it differently,
 			// but the current struct has Name field with json:"name"
 		}
 		c.Agents[a.Name] = a
@@ -130,12 +130,7 @@ func (c *AgentRegistryConfig) Build() *AgentRegistry {
 					req.Messages = append(req.Messages, Message{Role: MessageRoleUser, Content: content})
 				}
 
-				// Add tools
-				for _, toolName := range config.Tools {
-					if toolDef, ok := c.Tools[toolName]; ok {
-						req.AddTool(toolDef.ToTool())
-					}
-				}
+				req.WithTools(config.tools)
 
 				session := NewAgentSession(ctx, client, req)
 
