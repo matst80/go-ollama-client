@@ -47,7 +47,7 @@ func TestAgentRegistryConfig(t *testing.T) {
 	registry := config.Build()
 
 	// 6. Spawn the agent
-	session, err := registry.SpawnAgent(ctx, "test-agent", "instance-1", "Initial message", "")
+	session, err := registry.SpawnAgent(ctx, "test-agent", "instance-1", "Initial message", NewDefaultAgentState())
 	if err != nil {
 		t.Fatalf("Failed to spawn agent: %v", err)
 	}
@@ -58,8 +58,8 @@ func TestAgentRegistryConfig(t *testing.T) {
 
 	// 7. Verify session state/config
 	state := session.GetState()
-	if state.Title != "Test Agent" {
-		t.Errorf("Expected title 'Test Agent', got %q", state.Title)
+	if state.GetTitle() != "Test Agent" {
+		t.Errorf("Expected title 'Test Agent', got %q", state.GetTitle())
 	}
 
 	// Since we can't easily inspect tools on the session without more interfaces,
@@ -116,7 +116,7 @@ func TestOnChatRequestHook(t *testing.T) {
 	mockClient := &mockChatClient{}
 
 	hookCalled := false
-	session := NewAgentSession(ctx, mockClient, NewChatRequest("mock"),
+	session := NewAgentSession(ctx, mockClient, NewChatRequest("mock"), NewDefaultAgentState(),
 		WithOnChatRequest(func(ctx context.Context, req *ChatRequest) error {
 			hookCalled = true
 			req.Model = "hooked-model"

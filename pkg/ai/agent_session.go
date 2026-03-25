@@ -317,6 +317,14 @@ func (a *AgentSession) SetClient(client ChatClientInterface) {
 
 // streamChat performs the streamed chat request and pipes the results into GlobalChan.
 func (a *AgentSession) streamChat(ctx context.Context) error {
+	// Ensure agent identity is preserved in the context
+	if ctx.Value("agentID") == nil && a.ctx.Value("agentID") != nil {
+		ctx = context.WithValue(ctx, "agentID", a.ctx.Value("agentID"))
+	}
+	if ctx.Value("parentAgentID") == nil && a.ctx.Value("parentAgentID") != nil {
+		ctx = context.WithValue(ctx, "parentAgentID", a.ctx.Value("parentAgentID"))
+	}
+
 	if a.OnChatRequest != nil {
 		if err := a.OnChatRequest(ctx, a.rec); err != nil {
 			return fmt.Errorf("OnChatRequest hook failed: %w", err)

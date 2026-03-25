@@ -78,7 +78,7 @@ func (e *ToolExecutor) IsHandled(callID string) bool {
 // - If the call has no ID, an error is returned because responses cannot be correlated.
 // - Duplicate calls (same ID) are ignored and return an empty string with nil error.
 // - If delivery into the session fails, the result is still returned along with the delivery error.
-func (e *ToolExecutor) Call(ctx context.Context, call ai.ToolCall) (string, error) {
+func (e *ToolExecutor) Call(ctx context.Context, call ai.ToolCall) (ToolResult, error) {
 	if call.ID != "" {
 		e.handledToolCalls[call.ID] = true
 	}
@@ -89,15 +89,15 @@ func (e *ToolExecutor) Call(ctx context.Context, call ai.ToolCall) (string, erro
 		timeout = def.Timeout
 	}
 
-	type result struct {
+	type callResult struct {
 		values []reflect.Value
 		err    error
 	}
-	resChan := make(chan result, 1)
+	resChan := make(chan callResult, 1)
 
 	go func() {
-		results, err := e.registry.Call(call.Function.Name, call.Function.Arguments)
-		resChan <- result{results, err}
+		results, err := e.registry.Call(ctx, call.Function.Name, call.Function.Arguments)
+		resChan <- callResult{results, err}
 	}()
 
 	start := time.Now()
@@ -108,9 +108,14 @@ func (e *ToolExecutor) Call(ctx context.Context, call ai.ToolCall) (string, erro
 		select {
 		case res := <-resChan:
 			if res.err != nil {
-				return "", fmt.Errorf("tool execution error: %w", res.err)
+				return ToolResult{}, fmt.Errorf("tool execution error: %w", res.err)
 			}
-			return resultString(res.values), nil
+			content, images := processResults(res.values)
+			return ToolResult{
+				CallID:  call.ID,
+				Content: content,
+				Images:  images,
+			}, nil
 		case <-ticker.C:
 			elapsed := time.Since(start).Round(time.Second)
 			slog.Debug("Tool still executing",
@@ -124,9 +129,9 @@ func (e *ToolExecutor) Call(ctx context.Context, call ai.ToolCall) (string, erro
 				e.OnProgress(call, elapsed)
 			}
 		case <-time.After(timeout - time.Since(start)):
-			return "", fmt.Errorf("tool execution timed out after %v", timeout)
+			return ToolResult{}, fmt.Errorf("tool execution timed out after %v", timeout)
 		case <-ctx.Done():
-			return "", ctx.Err()
+			return ToolResult{}, ctx.Err()
 		}
 	}
 }
@@ -134,6 +139,7 @@ func (e *ToolExecutor) Call(ctx context.Context, call ai.ToolCall) (string, erro
 type ToolResult struct {
 	CallID  string
 	Content string
+	Images  []string
 	Err     error
 }
 
@@ -149,6 +155,7 @@ func (r ToolResult) ToResultMessage() *ai.Message {
 		Role:       ai.MessageRoleTool,
 		ToolCallID: r.CallID,
 		Content:    r.Content,
+		Images:     r.Images,
 	}
 }
 
@@ -180,12 +187,11 @@ func (e *ToolExecutor) HandleCalls(ctx context.Context, calls []ai.ToolCall) ([]
 			}
 		}
 
-		content, err := e.Call(ctx, c)
-		res = append(res, ToolResult{
-			CallID:  c.ID,
-			Content: content,
-			Err:     err,
-		})
+		tr, err := e.Call(ctx, c)
+		if err != nil {
+			tr.Err = err
+		}
+		res = append(res, tr)
 	}
 	return res, nil
 }
@@ -218,11 +224,18 @@ func (e *ToolExecutor) AgentSessionOption(onResult func(ToolResult)) ai.AgentSes
 	})
 }
 
-func resultString(results []reflect.Value) string {
+func processResults(results []reflect.Value) (string, []string) {
 	if len(results) == 0 {
-		return "ok"
+		return "ok", nil
 	} else if len(results) == 1 {
-		return fmt.Sprint(results[0].Interface())
+		val := results[0].Interface()
+		if mm, ok := val.(ai.MultimodalToolResult); ok {
+			return mm.Content, mm.Images
+		}
+		if mm, ok := val.(*ai.MultimodalToolResult); ok {
+			return mm.Content, mm.Images
+		}
+		return fmt.Sprint(val), nil
 	} else {
 		// multiple return values, encode as JSON array
 		var interfaces []any
@@ -230,6 +243,6 @@ func resultString(results []reflect.Value) string {
 			interfaces = append(interfaces, v.Interface())
 		}
 		data, _ := json.Marshal(interfaces)
-		return string(data)
+		return string(data), nil
 	}
 }

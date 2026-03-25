@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 )
@@ -70,7 +71,7 @@ func TestRegistry_Call(t *testing.T) {
 	registry.Register("run", "run a command", &TestArgs{}, handler)
 
 	argsJSON := json.RawMessage(`{"command": "ls", "arg": "-la", "wait": true}`)
-	results, err := registry.Call("run", argsJSON)
+	results, err := registry.Call(context.Background(), "run", argsJSON)
 	if err != nil {
 		t.Fatalf("failed to call tool: %v", err)
 	}

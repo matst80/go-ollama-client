@@ -97,7 +97,7 @@ func (p *ServerProxy) RegisterToolsWithFilter(ctx context.Context, registry *too
 		argsType := reflect.TypeOf(map[string]interface{}{})
 		toolName := t.Name
 
-		handlerFunc := func(args map[string]interface{}) string {
+		handlerFunc := func(args map[string]interface{}) any {
 			callReq := mcp.CallToolRequest{}
 			callReq.Params.Name = toolName
 			callReq.Params.Arguments = args
@@ -110,9 +110,16 @@ func (p *ServerProxy) RegisterToolsWithFilter(ctx context.Context, registry *too
 				return fmt.Sprintf("tool %s returned error: %v", toolName, mcp.GetTextFromContent(callRes.Content))
 			}
 
-			var out string
+			var out ai.MultimodalToolResult
 			for _, c := range callRes.Content {
-				out += mcp.GetTextFromContent(c)
+				if t, ok := mcp.AsTextContent(c); ok {
+					out.Content += t.Text
+				} else if i, ok := mcp.AsImageContent(c); ok {
+					out.Images = append(out.Images, i.Data)
+				} else {
+					// Fallback for types we don't handle specifically
+					out.Content += mcp.GetTextFromContent(c)
+				}
 			}
 			return out
 		}

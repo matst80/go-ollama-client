@@ -43,6 +43,10 @@ type ListAgentsArgs struct{}
 
 type ListAgentTypesArgs struct{}
 
+type ReportArgs struct {
+	Message string `json:"message" tool:"The message to report back to the parent agent.,required"`
+}
+
 func (h *RegistryToolHandler) initTools() {
 	tools := []struct {
 		name string
@@ -52,6 +56,7 @@ func (h *RegistryToolHandler) initTools() {
 	}{
 		{"spawn_agent", "Spawn a new agent instance of a given type. Use unique instance_id.", SpawnAgentArgs{}, h.spawnAgent},
 		{"message_agent", "Send a message to a running agent instance and wait for response.", MessageAgentArgs{}, h.messageAgent},
+		{"report", "Report a message back to the parent agent.", ReportArgs{}, h.report},
 		{"agent_status", "Get status of a running agent instance.", AgentStatusArgs{}, h.agentStatus},
 		{"list_agents", "List all currently running agent instances.", ListAgentsArgs{}, h.listAgents},
 		{"list_agent_types", "List all available agent types that can be spawned.", ListAgentTypesArgs{}, h.listAgentTypes},
@@ -88,13 +93,42 @@ func (h *RegistryToolHandler) GetTools() []Tool {
 	return tools
 }
 
-func (h *RegistryToolHandler) spawnAgent(args SpawnAgentArgs) string {
-	state := h.createState(context.Background(), args.Content)
-	_, err := h.Registry.SpawnAgent(context.Background(), args.TypeName, args.InstanceID, args.Content, state)
+func (h *RegistryToolHandler) spawnAgent(ctx context.Context, args SpawnAgentArgs) string {
+	state := h.createState(ctx, args.Content)
+	_, err := h.Registry.SpawnAgent(ctx, args.TypeName, args.InstanceID, args.Content, state)
 	if err != nil {
 		return fmt.Sprintf("failed to spawn agent: %v", err)
 	}
 	return fmt.Sprintf("Agent instance '%s' spawned successfully.", args.InstanceID)
+}
+
+func (h *RegistryToolHandler) report(ctx context.Context, args ReportArgs) string {
+	agentID, ok := ctx.Value("agentID").(string)
+	if !ok {
+		return "error: could not determine current agent ID"
+	}
+
+	agent, ok := h.Registry.GetAgent(agentID)
+	if !ok {
+		return "error: current agent not found in registry"
+	}
+
+	parentID := agent.GetState().GetParentID()
+	if parentID == "" {
+		return "error: no parent agent to report to"
+	}
+
+	parent, ok := h.Registry.GetAgent(parentID)
+	if !ok {
+		return fmt.Sprintf("error: parent agent '%s' not found", parentID)
+	}
+
+	reportMsg := fmt.Sprintf("Report from %s: %s", agentID, args.Message)
+	if err := parent.SendUserMessage(ctx, reportMsg); err != nil {
+		return fmt.Sprintf("failed to send report to parent: %v", err)
+	}
+
+	return "Report sent to parent successfully."
 }
 
 func (h *RegistryToolHandler) messageAgent(args MessageAgentArgs) string {

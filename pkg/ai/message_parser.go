@@ -9,6 +9,7 @@ import (
 type StreamedBlock struct {
 	Type    string
 	Content string
+	Done    bool
 }
 
 // BlockParser parses accumulated streamed assistant output into typed blocks.

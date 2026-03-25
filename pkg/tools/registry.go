@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -81,7 +82,7 @@ func (r *Registry) GetTools() []ai.Tool {
 
 // Call invokes a registered tool by name with the given JSON arguments.
 // The arguments should be a JSON object mapping field names to values.
-func (r *Registry) Call(name string, argsJSON json.RawMessage) ([]reflect.Value, error) {
+func (r *Registry) Call(ctx context.Context, name string, argsJSON json.RawMessage) ([]reflect.Value, error) {
 	def, ok := r.tools[name]
 	if !ok {
 		return nil, fmt.Errorf("tool %s not found", name)
@@ -95,10 +96,21 @@ func (r *Registry) Call(name string, argsJSON json.RawMessage) ([]reflect.Value,
 		return nil, fmt.Errorf("failed to unmarshal arguments for tool %s: %v", name, err)
 	}
 
-	// Call the handler with the unmarshaled struct
-	// Note: We assume the handler takes the args struct (not pointer) as its ONLY argument
-	// based on the user's example: func RunCommand(args RunArgs)
-	results := def.Handler.Call([]reflect.Value{argsPtr.Elem()})
+	// Prepare arguments for the call
+	var callArgs []reflect.Value
+	handlerType := def.Handler.Type()
+
+	// Check if the handler expects a context.Context as the first argument
+	if handlerType.NumIn() > 0 && handlerType.In(0).String() == "context.Context" {
+		callArgs = append(callArgs, reflect.ValueOf(ctx))
+	}
+
+	// Add the args struct (Elem() of the pointer)
+	// Note: We assume the last (or second) argument is the args struct
+	callArgs = append(callArgs, argsPtr.Elem())
+
+	// Call the handler
+	results := def.Handler.Call(callArgs)
 
 	return results, nil
 }

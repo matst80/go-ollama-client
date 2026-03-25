@@ -54,8 +54,10 @@ func TestRegistryTools(t *testing.T) {
 		t.Errorf("Expected 'Echo Agent' in list, got %q", res)
 	}
 
+	ctx := context.Background()
+
 	// 2. Test spawn_agent
-	res = handler.spawnAgent(SpawnAgentArgs{
+	res = handler.spawnAgent(ctx, SpawnAgentArgs{
 		TypeName:   "echo",
 		InstanceID: "echo-1",
 		Content:    "Hello world",

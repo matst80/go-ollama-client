@@ -130,7 +130,7 @@ func (c *AgentRegistryConfig) Build() *AgentRegistry {
 					req.Messages = append(req.Messages, Message{Role: MessageRoleUser, Content: content})
 				}
 
-				req.WithTools(config.tools)
+				req.WithTools(append(config.tools, c.Tools...))
 
 				session := NewAgentSession(ctx, client, req, state)
 

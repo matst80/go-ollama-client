@@ -47,7 +47,7 @@ func TestAgentSession_SendUserMessage(t *testing.T) {
 		},
 	}
 
-	session := NewAgentSession(ctx, mockClient, req)
+	session := NewAgentSession(ctx, mockClient, req, NewDefaultAgentState())
 	defer session.Stop()
 
 	err := session.SendUserMessage(ctx, "Hi")
@@ -104,7 +104,7 @@ func TestAgentSession_SendToolResults(t *testing.T) {
 		},
 	}
 
-	session := NewAgentSession(ctx, mockClient, req)
+	session := NewAgentSession(ctx, mockClient, req, NewDefaultAgentState())
 	defer session.Stop()
 
 	toolMsg := Message{
@@ -198,7 +198,7 @@ func TestAgentSession_WithAutoToolExecutor_SendsToolResults(t *testing.T) {
 	}
 
 	var callbackResults []callbackResult
-	session := NewAgentSession(ctx, mockClient, req,
+	session := NewAgentSession(ctx, mockClient, req, NewDefaultAgentState(),
 		WithAutoToolExecutor(func(ctx context.Context, calls []ToolCall) ([]Message, []AutoToolResult, error) {
 			if len(calls) != 1 {
 				t.Fatalf("expected exactly one tool call, got %d", len(calls))
@@ -320,7 +320,7 @@ func TestAgentSession_WithAutoToolExecutor_WithoutCallback(t *testing.T) {
 		},
 	}
 
-	session := NewAgentSession(ctx, mockClient, req, WithAutoToolExecutor(func(ctx context.Context, calls []ToolCall) ([]Message, []AutoToolResult, error) {
+	session := NewAgentSession(ctx, mockClient, req, NewDefaultAgentState(), WithAutoToolExecutor(func(ctx context.Context, calls []ToolCall) ([]Message, []AutoToolResult, error) {
 		if len(calls) != 1 {
 			t.Fatalf("expected exactly one tool call, got %d", len(calls))
 		}

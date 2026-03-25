@@ -32,6 +32,12 @@ type Message struct {
 	ToolCallID string `json:"tool_call_id,omitempty"`
 }
 
+// MultimodalToolResult represents a tool result that can include both text and images.
+type MultimodalToolResult struct {
+	Content string   `json:"content"`
+	Images  []string `json:"images,omitempty"`
+}
+
 func NewMessage(role MessageRole, content string) *Message {
 	return &Message{
 		Role:    role,

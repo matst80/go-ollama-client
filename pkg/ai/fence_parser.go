@@ -12,11 +12,14 @@ import (
 // ...block body...
 // ```
 type FenceParser struct {
-	buf strings.Builder
+	buf            strings.Builder
+	EmitFragments  bool
 }
 
 func NewFenceParser() *FenceParser {
-	return &FenceParser{}
+	return &FenceParser{
+		EmitFragments: true,
+	}
 }
 
 // ParseBlocks accepts accumulated streamed content and emits StreamedBlock values
@@ -39,34 +42,48 @@ func (p *FenceParser) ParseBlocks(ctx context.Context, res *AccumulatedResponse)
 			break
 		}
 
-		if start > 0 {
-			input = input[start:]
-		}
-
-		newlineOffset := strings.IndexByte(input, '\n')
+		newlineOffset := strings.IndexByte(input[start:], '\n')
 		if newlineOffset == -1 {
 			break
 		}
+		newlineOffset += start
 
-		header := strings.TrimSpace(input[3:newlineOffset])
+		header := strings.TrimSpace(input[start+3 : newlineOffset])
 		if header == "" || strings.ContainsAny(header, " \t") || strings.ContainsAny(header, "`") {
-			input = input[3:]
+			input = input[start+3:]
 			continue
 		}
 
 		bodyAndTail := input[newlineOffset+1:]
-		endOffset := strings.Index(bodyAndTail, "\n```")
+		endOffset := strings.Index(bodyAndTail, "```")
 		if endOffset == -1 {
+			if res.Chunk.Done || p.EmitFragments {
+				// Emit fragment (intermediate or final)
+				out = append(out, &StreamedBlock{
+					Type:    header,
+					Content: bodyAndTail,
+					Done:    res.Chunk.Done,
+				})
+				if res.Chunk.Done {
+					input = ""
+				}
+			}
 			break
 		}
 
-		body := bodyAndTail[:endOffset+1]
+		body := bodyAndTail[:endOffset]
+		// Handle optional newline directly before backticks
+		if len(body) > 0 && body[len(body)-1] == '\n' {
+			body = body[:len(body)-1]
+		}
+
 		out = append(out, &StreamedBlock{
 			Type:    header,
 			Content: body,
+			Done:    true,
 		})
 
-		input = bodyAndTail[endOffset+len("\n```"):]
+		input = bodyAndTail[endOffset+len("```"):]
 	}
 
 	p.buf.Reset()
