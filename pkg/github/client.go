@@ -2,45 +2,36 @@ package github
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"sync"
 
-	"net/http"
-
+	"github.com/github/copilot-sdk/go"
 	"github.com/matst80/go-ai-agent/pkg/ai"
-	"github.com/matst80/go-ai-agent/pkg/openai"
 )
 
-// DefaultURL is the base URL for GitHub Copilot Chat Completions API
-const DefaultURL = "https://models.github.ai"
-
-// GitHubClient handles interaction with the GitHub Copilot Chat Completions API
+// GitHubClient handles interaction with the GitHub Copilot CLI via copilot-sdk
 type GitHubClient struct {
-	client       *ai.ApiClient
+	client       *copilot.Client
 	defaultModel string
-	apiVersion   string
+
+	mu       sync.RWMutex
+	sessions map[string]*copilot.Session
 }
 
-// NewGitHubClient creates a new GitHub client
-func NewGitHubClient(apiKey string, apiVersion string) *GitHubClient {
-	headers := map[string]string{
-		"Authorization":        fmt.Sprintf("Bearer %s", apiKey),
-		"Accept":               "application/vnd.github+json",
-		"X-GitHub-Api-Version": apiVersion,
-		"Content-Type":         "application/json",
+// NewGitHubClient creates a new GitHub client backed by Copilot SDK
+func NewGitHubClient() *GitHubClient {
+	c := copilot.NewClient(nil)
+	if err := c.Start(context.Background()); err != nil {
+		fmt.Printf("Warning: failed to start copilot client: %v\n", err)
 	}
-
 	return &GitHubClient{
-		client:     ai.NewApiClient(DefaultURL, headers),
-		apiVersion: apiVersion,
+		client:   c,
+		sessions: make(map[string]*copilot.Session),
 	}
 }
 
-// WithLogFile sets the path to the log file for the underlying API client
+// WithLogFile is retained for interface compatibility but ignored as we use copilot-sdk.
 func (c *GitHubClient) WithLogFile(path string) *GitHubClient {
-	if c.client != nil {
-		c.client.WithLogFile(path)
-	}
 	return c
 }
 
@@ -50,66 +41,188 @@ func (c *GitHubClient) WithDefaultModel(model string) *GitHubClient {
 	return c
 }
 
+// getOrCreateSession retrieves an existing Copilot session or creates a new one.
+func (c *GitHubClient) getOrCreateSession(ctx context.Context, sessionID string, model string) (*copilot.Session, error) {
+	if model == "" {
+		model = c.defaultModel
+	}
+
+	if sessionID != "" {
+		c.mu.RLock()
+		sess, ok := c.sessions[sessionID]
+		c.mu.RUnlock()
+		if ok {
+			return sess, nil
+		}
+
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		// Double-check locking
+		if sess, ok := c.sessions[sessionID]; ok {
+			return sess, nil
+		}
+	}
+
+	sess, err := c.client.CreateSession(ctx, &copilot.SessionConfig{
+		Model:               model,
+		OnPermissionRequest: copilot.PermissionHandler.ApproveAll,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create copilot session: %w", err)
+	}
+
+	if sessionID != "" {
+		c.sessions[sessionID] = sess
+	}
+
+	return sess, nil
+}
+
 // Chat handles a non-streaming request to GitHub Models
 func (c *GitHubClient) Chat(ctx context.Context, req ai.ChatRequest) (*ai.ChatResponse, error) {
-	if req.Model == "" {
-		req.Model = c.defaultModel
-	}
-	req.Stream = false
-	oaReq := openai.ToOpenAIChatRequest(&req)
-
-	resp, err := c.client.PostJson(ctx, "inference/chat/completions", oaReq)
+	sess, err := c.getOrCreateSession(ctx, req.SessionID, req.Model)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitHub request failed with status %d", resp.StatusCode)
+	if req.Model != "" && req.Model != c.defaultModel {
+		if err := sess.SetModel(ctx, req.Model); err != nil {
+			return nil, fmt.Errorf("failed to set model: %w", err)
+		}
 	}
 
-	var chatResp openai.ChatCompletion
-	decoder := json.NewDecoder(resp.Body)
-	if err := decoder.Decode(&chatResp); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	var latestMessage string
+	if len(req.Messages) > 0 {
+		latestMessage = req.Messages[len(req.Messages)-1].Content
 	}
 
-	return chatResp.ToChatResponse(), nil
+	event, err := sess.SendAndWait(ctx, copilot.MessageOptions{
+		Prompt: latestMessage,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to send message: %w", err)
+	}
+
+	var content string
+	if event != nil && event.Data.Content != nil {
+		content = *event.Data.Content
+	}
+
+	return &ai.ChatResponse{
+		BaseResponse: &ai.BaseResponse{
+			Done: true,
+		},
+		Message: ai.Message{
+			Role:    ai.MessageRoleAssistant,
+			Content: content,
+		},
+	}, nil
 }
 
 // ChatStreamed handles the streaming request to GitHub Models
 func (c *GitHubClient) ChatStreamed(ctx context.Context, req ai.ChatRequest, ch chan *ai.ChatResponse) error {
-	if req.Model == "" {
-		req.Model = c.defaultModel
-	}
-	req.Stream = true
-	oaReq := openai.ToOpenAIChatRequest(&req)
 	defer close(ch)
 
-	resp, err := c.client.PostJson(ctx, "inference/chat/completions", oaReq)
+	sess, err := c.getOrCreateSession(ctx, req.SessionID, req.Model)
 	if err != nil {
-		if ctx.Err() != nil {
-			return ctx.Err()
+		return err
+	}
+
+	if req.Model != "" && req.Model != c.defaultModel {
+		if err := sess.SetModel(ctx, req.Model); err != nil {
+			return fmt.Errorf("failed to set model: %w", err)
+		}
+	}
+
+	var latestMessage string
+	if len(req.Messages) > 0 {
+		latestMessage = req.Messages[len(req.Messages)-1].Content
+	}
+
+	done := make(chan error, 1) // Buffer of 1 prevents deadlock if both error and done happen
+
+	msgID, err := sess.Send(ctx, copilot.MessageOptions{
+		Prompt: latestMessage,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to send message: %w", err)
+	}
+
+	// Make sure we stop sending to ch after we unsubscribe and exit
+	chClosed := false
+	var chMu sync.Mutex
+
+	// Register event handler AFTER sending so msgID is known and we don't have a race condition
+	unsubscribe := sess.On(func(event copilot.SessionEvent) {
+		// Filter events: only process events for our interaction.
+		if event.Data.InteractionID != nil && *event.Data.InteractionID != msgID {
+			return
+		}
+
+		chMu.Lock()
+		defer chMu.Unlock()
+		if chClosed {
+			return
+		}
+
+		switch event.Type {
+		case copilot.SessionEventType("assistant.message.chunk"):
+			if event.Data.DeltaContent != nil {
+				ch <- &ai.ChatResponse{
+					BaseResponse: &ai.BaseResponse{
+						Done: false,
+					},
+					Message: ai.Message{
+						Role:    ai.MessageRoleAssistant,
+						Content: *event.Data.DeltaContent,
+					},
+				}
+			}
+		case copilot.SessionEventType("assistant.error"):
+			var errMsg string
+			if event.Data.ErrorReason != nil {
+				errMsg = *event.Data.ErrorReason
+			} else if event.Data.ErrorType != nil {
+				errMsg = *event.Data.ErrorType
+			} else {
+				errMsg = "unknown assistant error"
+			}
+			select {
+			case done <- fmt.Errorf("assistant error: %s", errMsg):
+			default:
+			}
+		case copilot.SessionEventType("assistant.message.done"):
+			select {
+			case done <- nil:
+			default:
+			}
+		}
+	})
+
+	defer func() {
+		unsubscribe()
+		chMu.Lock()
+		chClosed = true
+		chMu.Unlock()
+	}()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case err := <-done:
+		if err == nil {
+			chMu.Lock()
+			if !chClosed {
+				ch <- &ai.ChatResponse{
+					BaseResponse: &ai.BaseResponse{
+						Done: true,
+					},
+				}
+			}
+			chMu.Unlock()
 		}
 		return err
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("GitHub request failed with status %d", resp.StatusCode)
-	}
-
-	handler := ai.DataJsonChunkReader(func(cjk *openai.ChatCompletionChunk) bool {
-		// Use the mapping logic from openai package
-		ch <- cjk.ToChatResponse()
-		return false
-	})
-
-	if err := ai.ChunkReader(ctx, resp.Body, handler); err != nil {
-		return err
-	}
-
-	return nil
 }
 
 // ModelInfo represents information about a model from the GitHub catalog
@@ -123,19 +236,18 @@ type ModelInfo struct {
 
 // GetModels returns the list of available models from the GitHub catalog
 func (c *GitHubClient) GetModels(ctx context.Context) ([]ModelInfo, error) {
-	resp, err := c.client.GetJson(ctx, "catalog/models")
+	sdkModels, err := c.client.ListModels(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to get models: status %d", resp.StatusCode)
-	}
 
 	var models []ModelInfo
-	if err := json.NewDecoder(resp.Body).Decode(&models); err != nil {
-		return nil, fmt.Errorf("failed to decode models: %w", err)
+	for _, m := range sdkModels {
+		models = append(models, ModelInfo{
+			ID:      m.ID,
+			Name:    m.Name,
+			Summary: m.ID, // Fallback since Family does not exist
+		})
 	}
 
 	return models, nil

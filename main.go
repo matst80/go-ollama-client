@@ -78,7 +78,7 @@ func main() {
 			if model == "" {
 				model = "gpt-4o"
 			}
-			client := github.NewGitHubClient(os.Getenv("GITHUB_TOKEN"), "").WithDefaultModel(model)
+			client := github.NewGitHubClient().WithDefaultModel(model)
 			if lp := os.Getenv("AI_LOG_PATH"); lp != "" {
 				client.WithLogFile(lp)
 			}
@@ -119,7 +119,7 @@ func main() {
 	}()
 
 	// Setup Master Agent (using GitHub for verification)
-	masterClient := github.NewGitHubClient(os.Getenv("GITHUB_TOKEN"), "").WithDefaultModel("gpt-4o")
+	masterClient := github.NewGitHubClient().WithDefaultModel("gpt-4o")
 	if lp := os.Getenv("AI_LOG_PATH"); lp != "" {
 		masterClient.WithLogFile(lp)
 	}

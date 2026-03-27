@@ -141,10 +141,18 @@ type BaseRequest[T any] struct {
 
 	// Think if true, the model will return its thinking process
 	Think any `json:"think,omitempty"`
+
+	// SessionID is the ID of the session to use for stateful clients
+	SessionID string `json:"session_id,omitempty"`
 }
 
 func (r *BaseRequest[T]) WithModel(model string) *T {
 	r.Model = model
+	return r.parent
+}
+
+func (r *BaseRequest[T]) WithSessionID(sessionID string) *T {
+	r.SessionID = sessionID
 	return r.parent
 }
 
