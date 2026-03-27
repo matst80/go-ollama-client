@@ -21,29 +21,29 @@ func ToGeminiRequest(req ai.ChatRequest) ([]*genai.Content, *genai.GenerateConte
 			continue
 		}
 
-		role := string(msg.Role)
-		if role == string(ai.MessageRoleAssistant) {
+		role := "user"
+		if msg.Role == ai.MessageRoleAssistant {
 			role = "model"
-		} else if role == string(ai.MessageRoleTool) {
-			role = "user"
 		}
 
 		parts := make([]*genai.Part, 0)
-		if msg.Content != "" {
+		if msg.Content != "" && msg.Role != ai.MessageRoleTool {
 			parts = append(parts, &genai.Part{Text: msg.Content})
 		}
 
 		for _, tc := range msg.ToolCalls {
 			var args map[string]any
 			json.Unmarshal(tc.Function.Arguments, &args)
-			parts = append(parts, &genai.Part{
+			part := &genai.Part{
 				FunctionCall: &genai.FunctionCall{
-					ID:   tc.ID,
 					Name: tc.Function.Name,
 					Args: args,
 				},
-				ThoughtSignature: []byte(tc.ThoughtSignature),
-			})
+			}
+			if tc.ThoughtSignature != "" {
+				part.ThoughtSignature = []byte(tc.ThoughtSignature)
+			}
+			parts = append(parts, part)
 		}
 
 		if msg.Role == ai.MessageRoleTool {
@@ -51,19 +51,26 @@ func ToGeminiRequest(req ai.ChatRequest) ([]*genai.Content, *genai.GenerateConte
 			if err := json.Unmarshal([]byte(msg.Content), &response); err != nil {
 				response = map[string]any{"result": msg.Content}
 			}
+			// Note: We try to use the ToolCallID as the name if we don't have the function name,
+			// though Gemini prefers the function name. If the previous message was a model call,
+			// we could try to look it up, but for now we'll stick to ID.
 			parts = append(parts, &genai.Part{
 				FunctionResponse: &genai.FunctionResponse{
-					ID:       msg.ToolCallID,
-					Name:     msg.ToolCallID, // Gemini API requires name matching the tool. The ai.Message doesn't store the tool name, but ID might not match name. We will see.
+					Name:     msg.ToolCallID,
 					Response: response,
 				},
 			})
 		}
 
-		contents = append(contents, &genai.Content{
-			Role:  role,
-			Parts: parts,
-		})
+		// Merge with previous message if role is the same
+		if len(contents) > 0 && contents[len(contents)-1].Role == role {
+			contents[len(contents)-1].Parts = append(contents[len(contents)-1].Parts, parts...)
+		} else if len(parts) > 0 {
+			contents = append(contents, &genai.Content{
+				Role:  role,
+				Parts: parts,
+			})
+		}
 	}
 
 	config := &genai.GenerateContentConfig{
@@ -71,15 +78,12 @@ func ToGeminiRequest(req ai.ChatRequest) ([]*genai.Content, *genai.GenerateConte
 	}
 
 	if len(req.Tools) > 0 {
-		var tool *genai.Tool
 		funcs := make([]*genai.FunctionDeclaration, 0)
+		var googleSearch *genai.GoogleSearchRetrieval
 
 		for _, t := range req.Tools {
 			if t.Function.Name == "google_search_retrieval" || t.Function.Name == "google_search" {
-				if tool == nil {
-					tool = &genai.Tool{}
-				}
-				tool.GoogleSearchRetrieval = &genai.GoogleSearchRetrieval{}
+				googleSearch = &genai.GoogleSearchRetrieval{}
 				continue
 			}
 
@@ -99,14 +103,14 @@ func ToGeminiRequest(req ai.ChatRequest) ([]*genai.Content, *genai.GenerateConte
 		}
 
 		if len(funcs) > 0 {
-			if tool == nil {
-				tool = &genai.Tool{}
-			}
-			tool.FunctionDeclarations = funcs
+			config.Tools = append(config.Tools, &genai.Tool{
+				FunctionDeclarations: funcs,
+			})
 		}
-
-		if tool != nil {
-			config.Tools = []*genai.Tool{tool}
+		if googleSearch != nil {
+			config.Tools = append(config.Tools, &genai.Tool{
+				GoogleSearchRetrieval: googleSearch,
+			})
 		}
 	}
 
