@@ -2,9 +2,10 @@ package gemini
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/matst80/go-ai-agent/pkg/ai"
-    "google.golang.org/genai"
+	"google.golang.org/genai"
 )
 
 // Helper to convert ai.ChatRequest to []*genai.Content and *genai.GenerateContentConfig
@@ -66,30 +67,47 @@ func ToGeminiRequest(req ai.ChatRequest) ([]*genai.Content, *genai.GenerateConte
 	}
 
 	config := &genai.GenerateContentConfig{
-        SystemInstruction: systemInstr,
-    }
+		SystemInstruction: systemInstr,
+	}
 
 	if len(req.Tools) > 0 {
-		funcs := make([]*genai.FunctionDeclaration, 0, len(req.Tools))
-		for _, t := range req.Tools {
+		var tool *genai.Tool
+		funcs := make([]*genai.FunctionDeclaration, 0)
 
-            // Convert json schema in function parameters to genai.Schema
-            var paramsSchema *genai.Schema
-            sanitizedParams := sanitizeSchema(t.Function.Parameters)
-            b, err := json.Marshal(sanitizedParams)
-            if err == nil {
-                json.Unmarshal(b, &paramsSchema)
-            }
+		for _, t := range req.Tools {
+			if t.Function.Name == "google_search_retrieval" || t.Function.Name == "google_search" {
+				if tool == nil {
+					tool = &genai.Tool{}
+				}
+				tool.GoogleSearchRetrieval = &genai.GoogleSearchRetrieval{}
+				continue
+			}
+
+			// Convert json schema in function parameters to genai.Schema
+			var paramsSchema *genai.Schema
+			sanitizedParams := sanitizeSchema(t.Function.Parameters)
+			b, err := json.Marshal(sanitizedParams)
+			if err == nil {
+				json.Unmarshal(b, &paramsSchema)
+			}
 
 			funcs = append(funcs, &genai.FunctionDeclaration{
-                Name: t.Function.Name,
-                Description: t.Function.Description,
-                Parameters: paramsSchema,
-            })
+				Name:        t.Function.Name,
+				Description: t.Function.Description,
+				Parameters:  paramsSchema,
+			})
 		}
-		config.Tools = []*genai.Tool{{
-            FunctionDeclarations: funcs,
-        }}
+
+		if len(funcs) > 0 {
+			if tool == nil {
+				tool = &genai.Tool{}
+			}
+			tool.FunctionDeclarations = funcs
+		}
+
+		if tool != nil {
+			config.Tools = []*genai.Tool{tool}
+		}
 	}
 
 	if req.Format != nil {
@@ -168,38 +186,47 @@ func ToChatResponse(gr *genai.GenerateContentResponse) *ai.ChatResponse {
 	content := ""
 	var toolCalls []ai.ToolCall
 
-    if cand.Content != nil {
-        for _, part := range cand.Content.Parts {
-            if part.Text != "" {
-                content += part.Text
-            }
-            if part.FunctionCall != nil {
-                args, _ := json.Marshal(part.FunctionCall.Args)
-                toolCalls = append(toolCalls, ai.ToolCall{
-                    ID: part.FunctionCall.ID,
-                    Function: ai.FunctionCall{
-                        Name:      part.FunctionCall.Name,
-                        Arguments: args,
-                    },
-                    ThoughtSignature: string(part.ThoughtSignature),
-                })
-            }
-        }
-    }
+	if cand.Content != nil {
+		for _, part := range cand.Content.Parts {
+			if part.Text != "" {
+				content += part.Text
+			}
+			if part.FunctionCall != nil {
+				args, _ := json.Marshal(part.FunctionCall.Args)
+				toolCalls = append(toolCalls, ai.ToolCall{
+					ID: part.FunctionCall.ID,
+					Function: ai.FunctionCall{
+						Name:      part.FunctionCall.Name,
+						Arguments: args,
+					},
+					ThoughtSignature: string(part.ThoughtSignature),
+				})
+			}
+		}
+	}
+
+	if cand.GroundingMetadata != nil {
+		content += "\n\nSources:\n"
+		for _, chunk := range cand.GroundingMetadata.GroundingChunks {
+			if chunk.Web != nil {
+				content += fmt.Sprintf("- [%s](%s)\n", chunk.Web.Title, chunk.Web.URI)
+			}
+		}
+	}
 
 	role := ai.MessageRoleAssistant
-    if cand.Content != nil {
-        if cand.Content.Role == "user" {
-            role = ai.MessageRoleUser
-        }
-    }
+	if cand.Content != nil {
+		if cand.Content.Role == "user" {
+			role = ai.MessageRoleUser
+		}
+	}
 
-    doneReason := string(cand.FinishReason)
+	doneReason := string(cand.FinishReason)
 
 	return &ai.ChatResponse{
 		BaseResponse: &ai.BaseResponse{
-			Done: doneReason != "" && doneReason != "FINISH_REASON_UNSPECIFIED",
-            DoneReason: doneReason,
+			Done:       doneReason != "" && doneReason != "FINISH_REASON_UNSPECIFIED",
+			DoneReason: doneReason,
 		},
 		Message: ai.Message{
 			Role:      role,
