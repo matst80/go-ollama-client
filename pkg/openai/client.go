@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 
 	"github.com/matst80/go-ai-agent/pkg/ai"
@@ -50,7 +51,8 @@ func (c *OpenAIClient) Chat(ctx context.Context, req ai.ChatRequest) (*ai.ChatRe
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("OpenAI request failed with status %d", resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("OpenAI request failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
 	decoder := json.NewDecoder(resp.Body)
@@ -83,7 +85,8 @@ func (c *OpenAIClient) ChatStreamed(ctx context.Context, req ai.ChatRequest, ch 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("OpenAI request failed with status %d", resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("OpenAI request failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
 	handler := ai.DataJsonChunkReader(func(chunk *ChatCompletionChunk) bool {

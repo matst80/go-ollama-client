@@ -250,9 +250,8 @@ func ToOpenAIChatRequest(req *ai.ChatRequest) OpenAIChatRequest {
 
 	for _, m := range req.Messages {
 		oam := OpenAIMessage{
-			Role:             m.Role,
-			ReasoningContent: m.ReasoningContent,
-			ToolCallID:       m.ToolCallID,
+			Role:       m.Role,
+			ToolCallID: m.ToolCallID,
 		}
 
 		if len(m.Images) > 0 || len(m.Audio) > 0 {
@@ -267,7 +266,7 @@ func ToOpenAIChatRequest(req *ai.ChatRequest) OpenAIChatRequest {
 			for _, img := range m.Images {
 				parts = append(parts, map[string]interface{}{
 					"type": "image_url",
-					"image_url": map[string]interface{}{
+					"image_url": map[string]string{
 						"url": img,
 					},
 				})
@@ -296,6 +295,16 @@ func ToOpenAIChatRequest(req *ai.ChatRequest) OpenAIChatRequest {
 				})
 			}
 			oam.Content = parts
+			// if len(m.Images) > 0 {
+			// 	oam.Images = make([]string, len(m.Images))
+			// 	for i, img := range m.Images {
+			// 		if commaIdx := strings.Index(img, ","); commaIdx != -1 {
+			// 			oam.Images[i] = img[commaIdx+1:]
+			// 		} else {
+			// 			oam.Images[i] = img
+			// 		}
+			// 	}
+			// }
 
 		} else {
 			oam.Content = m.Content
