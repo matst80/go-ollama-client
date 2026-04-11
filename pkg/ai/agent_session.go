@@ -300,6 +300,16 @@ func (a *AgentSession) GetMessageHistory() []Message {
 	return a.rec.Messages
 }
 
+func (a *AgentSession) SetSystemMessage(msg string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if len(a.rec.Messages) > 0 && a.rec.Messages[0].Role == MessageRoleSystem {
+		a.rec.Messages[0].Content = msg
+	} else {
+		a.rec.Messages = append([]Message{{Role: MessageRoleSystem, Content: msg, CreatedAt: time.Now()}}, a.rec.Messages...)
+	}
+}
+
 func (a *AgentSession) GetModel() string {
 	return a.rec.Model
 }

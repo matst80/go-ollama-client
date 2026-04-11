@@ -2,6 +2,8 @@ package openrouter
 
 import (
 	"encoding/json"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/matst80/go-ai-agent/pkg/ai"
@@ -141,14 +143,21 @@ type OpenRouterToolCall struct {
 
 // OpenRouterContentPart represents a part of a multimodal message
 type OpenRouterContentPart struct {
-	Type     string              `json:"type"`
-	Text     string              `json:"text,omitempty"`
-	ImageURL *OpenRouterImageURL `json:"image_url,omitempty"`
+	Type       string                `json:"type"`
+	Text       string                `json:"text,omitempty"`
+	ImageURL   *OpenRouterImageURL   `json:"image_url,omitempty"`
+	InputAudio *OpenRouterInputAudio `json:"input_audio,omitempty"`
 }
 
 // OpenRouterImageURL represents an image URL in a content part
 type OpenRouterImageURL struct {
 	URL string `json:"url"`
+}
+
+// OpenRouterInputAudio represents audio data in a content part
+type OpenRouterInputAudio struct {
+	Data   string `json:"data"`
+	Format string `json:"format"`
 }
 
 // OpenRouterMessage is the message shape for OpenRouter requests
@@ -190,8 +199,8 @@ func ToOpenRouterChatRequest(req *ai.ChatRequest) OpenRouterChatRequest {
 			ToolCallID:       m.ToolCallID,
 		}
 
-		if len(m.Images) > 0 {
-			parts := make([]OpenRouterContentPart, 0, len(m.Images)+1)
+		if len(m.Images) > 0 || len(m.Audio) > 0 {
+			parts := make([]OpenRouterContentPart, 0, len(m.Images)+len(m.Audio)+1)
 			if m.Content != "" {
 				parts = append(parts, OpenRouterContentPart{
 					Type: "text",
@@ -205,6 +214,25 @@ func ToOpenRouterChatRequest(req *ai.ChatRequest) OpenRouterChatRequest {
 						URL: img, // We assume this is already correctly formatted (e.g. data URL) or handled by the caller.
 					},
 				})
+			}
+			for _, aud := range m.Audio {
+				// Parse data URL to extract raw base64 and format
+				var mimeType, base64Data string
+				if _, err := fmt.Sscanf(aud, "data:%[^;];base64,%s", &mimeType, &base64Data); err == nil {
+					format := "mp3" // Default
+					if strings.Contains(mimeType, "wav") {
+						format = "wav"
+					} else if strings.Contains(mimeType, "ogg") || strings.Contains(mimeType, "opus") {
+						format = "opus"
+					}
+					parts = append(parts, OpenRouterContentPart{
+						Type: "input_audio",
+						InputAudio: &OpenRouterInputAudio{
+							Data:   base64Data,
+							Format: format,
+						},
+					})
+				}
 			}
 			orm.Content = parts
 		} else {

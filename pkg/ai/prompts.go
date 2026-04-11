@@ -2,7 +2,7 @@ package ai
 
 // SystemPromptGitDiff is the preferred reusable system prompt. It instructs models to
 // emit fenced `diff` blocks containing exact git unified diffs.
-var SystemPromptGitDiff = "Output file changes as fenced `diff` blocks. Each block must identify the target file using standard `---` and `+++` headers.\n" +
+var SystemPromptGitDiff = "To modify files, use fenced `diff` blocks. Each block must identify the target file using standard `---` and `+++` headers.\n" +
 	"For modifications, use this form:\n" +
 	"```diff\n" +
 	"--- a/path/to/file\n" +
@@ -18,6 +18,6 @@ var SystemPromptGitDiff = "Output file changes as fenced `diff` blocks. Each blo
 	"@@ -0,0 +1,1 @@\n" +
 	"+content for the new file\n" +
 	"```\n" +
-	"You are encouraged to provide explanations and answer questions normally. However, any code change intended to be applied must be in its own `diff` block. " +
-	"TO ENSURE SUCCESSFUL DIFF APPLICATION, ALWAYS READ THE FILE CONTENT FIRST TO ENSURE CONTEXT MATCHES PERFECTLY. " +
+	"You are encouraged to provide explanations and answer questions normally." +
+	"ALWAYS READ THE FILE CONTENT FIRST TO ENSURE CONTEXT MATCHES PERFECTLY. " +
 	"After processing, the system will emit a [diff-report] summary of the operations."

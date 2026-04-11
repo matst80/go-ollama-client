@@ -73,6 +73,25 @@ func (c *OllamaClient) Chat(ctx context.Context, req ai.ChatRequest) (*ai.ChatRe
 		req.Model = c.defaultModel
 	}
 	req.Stream = false
+	// Sanitize images and audio: Ollama expects raw base64, so strip data prefixes if present
+	for _, msg := range req.Messages {
+		if len(msg.Images) > 0 {
+			for i, img := range msg.Images {
+				var mimeType, base64Data string
+				if _, err := fmt.Sscanf(img, "data:%[^;];base64,%s", &mimeType, &base64Data); err == nil {
+					msg.Images[i] = base64Data
+				}
+			}
+		}
+		if len(msg.Audio) > 0 {
+			for i, aud := range msg.Audio {
+				var mimeType, base64Data string
+				if _, err := fmt.Sscanf(aud, "data:%[^;];base64,%s", &mimeType, &base64Data); err == nil {
+					msg.Audio[i] = base64Data
+				}
+			}
+		}
+	}
 	
 	ollamaReq := OllamaChatRequest{
 		ChatRequest: &req,
@@ -118,7 +137,26 @@ func (c *OllamaClient) ChatStreamed(ctx context.Context, ireq ai.ChatRequest, ch
 		ChatRequest: &ireq,
 		Options:     opts,
 	}
-	req.Stream = true
+	ireq.Stream = true
+	// Sanitize images and audio: Ollama expects raw base64, so strip data prefixes if present
+	for _, msg := range ireq.Messages {
+		if len(msg.Images) > 0 {
+			for i, img := range msg.Images {
+				var mimeType, base64Data string
+				if _, err := fmt.Sscanf(img, "data:%[^;];base64,%s", &mimeType, &base64Data); err == nil {
+					msg.Images[i] = base64Data
+				}
+			}
+		}
+		if len(msg.Audio) > 0 {
+			for i, aud := range msg.Audio {
+				var mimeType, base64Data string
+				if _, err := fmt.Sscanf(aud, "data:%[^;];base64,%s", &mimeType, &base64Data); err == nil {
+					msg.Audio[i] = base64Data
+				}
+			}
+		}
+	}
 	defer close(ch)
 
 	log.Printf("[Ollama] ChatStreamed starting for model %s", req.Model)

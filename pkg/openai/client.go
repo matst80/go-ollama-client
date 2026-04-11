@@ -54,12 +54,12 @@ func (c *OpenAIClient) Chat(ctx context.Context, req ai.ChatRequest) (*ai.ChatRe
 	}
 
 	decoder := json.NewDecoder(resp.Body)
-	var chatResp ai.ChatResponse
-	if err := decoder.Decode(&chatResp); err != nil {
+	var chatCompletion ChatCompletion
+	if err := decoder.Decode(&chatCompletion); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
 
-	return &chatResp, nil
+	return chatCompletion.ToChatResponse(), nil
 }
 
 var DATA_PREFIX = []byte("data: ")
@@ -71,6 +71,7 @@ func (c *OpenAIClient) ChatStreamed(ctx context.Context, req ai.ChatRequest, ch 
 	oaReq := ToOpenAIChatRequest(&req)
 	oaReq.Stream = true
 	defer close(ch)
+	sawDone := false
 
 	resp, err := c.client.PostJson(ctx, string(ChatEndpoint), oaReq)
 	if err != nil {
@@ -85,14 +86,27 @@ func (c *OpenAIClient) ChatStreamed(ctx context.Context, req ai.ChatRequest, ch 
 		return fmt.Errorf("OpenAI request failed with status %d", resp.StatusCode)
 	}
 
-
 	handler := ai.DataJsonChunkReader(func(chunk *ChatCompletionChunk) bool {
-		ch <- chunk.ToChatResponse()
+		response := chunk.ToChatResponse()
+		if response.Done {
+			sawDone = true
+		}
+		ch <- response
 		return false
 	})
 
 	if err := ai.ChunkReader(ctx, resp.Body, handler); err != nil {
 		return err
+	}
+
+	if !sawDone {
+		ch <- &ai.ChatResponse{
+			BaseResponse: &ai.BaseResponse{
+				Model: oaReq.Model,
+				Done:  true,
+			},
+			Message: ai.Message{Role: ai.MessageRoleAssistant},
+		}
 	}
 
 	return nil

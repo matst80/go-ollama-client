@@ -11,6 +11,7 @@ import (
 	"os"
 	"sync"
 	"time"
+        "strings"
 )
 
 type ApiClient struct {
@@ -125,7 +126,7 @@ func (c *ApiClient) newRequest(ctx context.Context, method string, endpoint stri
 			fullEndpoint = endpoint
 		}
 	}
-	httpReq, err := http.NewRequestWithContext(ctx, method, fmt.Sprintf("%s/%s", c.BaseUrl, fullEndpoint), body)
+	httpReq, err := http.NewRequestWithContext(ctx, method, strings.TrimSuffix(c.BaseUrl, "/") + "/" + strings.TrimPrefix(fullEndpoint, "/"), body)
 	if err != nil {
 		return httpReq, err
 	}

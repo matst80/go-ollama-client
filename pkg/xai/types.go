@@ -79,9 +79,8 @@ type XAIToolCall struct {
 // XAIMessage is the message shape for xAI requests
 type XAIMessage struct {
 	Role             ai.MessageRole `json:"role"`
-	Content          string         `json:"content"`
+	Content          any            `json:"content"`
 	ReasoningContent string         `json:"thinking,omitempty"`
-	Images           []string       `json:"images,omitempty"`
 	ToolCalls        []XAIToolCall  `json:"tool_calls,omitempty"`
 	ToolCallID       string         `json:"tool_call_id,omitempty"`
 }
@@ -199,10 +198,29 @@ func ToXAIChatRequest(req *ai.ChatRequest) XAIChatRequest {
 	for _, m := range req.Messages {
 		xm := XAIMessage{
 			Role:             m.Role,
-			Content:          m.Content,
 			ReasoningContent: m.ReasoningContent,
-			Images:           m.Images,
 			ToolCallID:       m.ToolCallID,
+		}
+
+		if len(m.Images) > 0 {
+			parts := make([]map[string]interface{}, 0, len(m.Images)+1)
+			if m.Content != "" {
+				parts = append(parts, map[string]interface{}{
+					"type": "text",
+					"text": m.Content,
+				})
+			}
+			for _, img := range m.Images {
+				parts = append(parts, map[string]interface{}{
+					"type": "image_url",
+					"image_url": map[string]interface{}{
+						"url": img,
+					},
+				})
+			}
+			xm.Content = parts
+		} else {
+			xm.Content = m.Content
 		}
 
 		if len(m.ToolCalls) > 0 {

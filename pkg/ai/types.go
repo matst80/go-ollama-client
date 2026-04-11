@@ -26,6 +26,8 @@ type Message struct {
 	ReasoningContent string `json:"thinking,omitempty"`
 	// Images is an optional list of base64-encoded images for multimodal models
 	Images []string `json:"images,omitempty"`
+	// Audio is an optional list of base64-encoded audio for multimodal models
+	Audio []string `json:"audio,omitempty"`
 	// ToolCalls are the tool calls made by the model
 	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
 	// ToolCallID is the ID of the tool call this message is responding to (role must be tool)
@@ -38,6 +40,7 @@ type Message struct {
 type MultimodalToolResult struct {
 	Content string   `json:"content"`
 	Images  []string `json:"images,omitempty"`
+	Audio   []string `json:"audio,omitempty"`
 }
 
 func NewMessage(role MessageRole, content string) *Message {

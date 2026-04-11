@@ -27,6 +27,50 @@ func ToGeminiRequest(req ai.ChatRequest) ([]*genai.Content, *genai.GenerateConte
 		}
 
 		parts := make([]*genai.Part, 0)
+		for _, img := range msg.Images {
+			// Parse data URL: data:<mime>;base64,<data>
+			var mimeType string
+			var base64Data string
+			if _, err := fmt.Sscanf(img, "data:%[^;];base64,%s", &mimeType, &base64Data); err == nil {
+				parts = append(parts, &genai.Part{
+					InlineData: &genai.Blob{
+						MIMEType: mimeType,
+						Data:     []byte(base64Data),
+					},
+				})
+			} else {
+				// Fallback if not a data URL (assume raw base64 and pick a default mime)
+				parts = append(parts, &genai.Part{
+					InlineData: &genai.Blob{
+						MIMEType: "image/jpeg",
+						Data:     []byte(img),
+					},
+				})
+			}
+		}
+
+		for _, aud := range msg.Audio {
+			// Parse data URL: data:<mime>;base64,<data>
+			var mimeType string
+			var base64Data string
+			if _, err := fmt.Sscanf(aud, "data:%[^;];base64,%s", &mimeType, &base64Data); err == nil {
+				parts = append(parts, &genai.Part{
+					InlineData: &genai.Blob{
+						MIMEType: mimeType,
+						Data:     []byte(base64Data),
+					},
+				})
+			} else {
+				// Fallback if not a data URL (assume raw base64 and pick a default mime)
+				parts = append(parts, &genai.Part{
+					InlineData: &genai.Blob{
+						MIMEType: "audio/ogg",
+						Data:     []byte(aud),
+					},
+				})
+			}
+		}
+
 		if msg.Content != "" && msg.Role != ai.MessageRoleTool {
 			parts = append(parts, &genai.Part{Text: msg.Content})
 		}

@@ -2,6 +2,7 @@ package openai
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/matst80/go-ai-agent/pkg/ai"
@@ -47,6 +48,7 @@ type Delta struct {
 	Content          string            `json:"content"`
 	Role             string            `json:"role"`
 	Reasoning        string            `json:"reasoning,omitempty"`
+	ReasoningContent string            `json:"reasoning_content,omitempty"`
 	ReasoningDetails []ReasoningDetail `json:"reasoning_details,omitempty"`
 	ToolCalls        []DeltaToolCall   `json:"tool_calls,omitempty"`
 }
@@ -96,11 +98,11 @@ func (c *ChatCompletionChunk) ToChatResponse() *ai.ChatResponse {
 	msg := ai.Message{
 		Role:             role,
 		Content:          choice.Delta.Content,
-		ReasoningContent: choice.Delta.Reasoning,
+		ReasoningContent: choice.Delta.ReasoningContent + choice.Delta.Reasoning,
 	}
 
 	// If reasoning is empty but reasoning_details has content, accumulate it
-	if msg.ReasoningContent == "" && len(choice.Delta.ReasoningDetails) > 0 {
+	if len(choice.Delta.ReasoningDetails) > 0 {
 		for _, detail := range choice.Delta.ReasoningDetails {
 			msg.ReasoningContent += detail.Text
 		}
@@ -152,8 +154,22 @@ func (c *ChatCompletion) ToChatResponse() *ai.ChatResponse {
 	choice := c.Choices[0]
 	msg := ai.Message{
 		Role:             choice.Message.Role,
-		Content:          choice.Message.Content,
 		ReasoningContent: choice.Message.ReasoningContent,
+	}
+
+	if s, ok := choice.Message.Content.(string); ok {
+		msg.Content = s
+	} else if parts, ok := choice.Message.Content.([]any); ok {
+		// Handle array of parts
+		for _, p := range parts {
+			if pm, ok := p.(map[string]any); ok {
+				if t, ok := pm["type"].(string); ok && t == "text" {
+					if txt, ok := pm["text"].(string); ok {
+						msg.Content += txt
+					}
+				}
+			}
+		}
 	}
 
 	if len(choice.Message.ToolCalls) > 0 {
@@ -202,8 +218,8 @@ type OpenAIToolCall struct {
 // OpenAIMessage is the message shape for OpenAI requests
 type OpenAIMessage struct {
 	Role             ai.MessageRole   `json:"role"`
-	Content          string           `json:"content"`
-	ReasoningContent string           `json:"thinking,omitempty"`
+	Content          any              `json:"content"`
+	ReasoningContent string           `json:"reasoning_content,omitempty"`
 	Images           []string         `json:"images,omitempty"`
 	ToolCalls        []OpenAIToolCall `json:"tool_calls,omitempty"`
 	ToolCallID       string           `json:"tool_call_id,omitempty"`
@@ -235,10 +251,54 @@ func ToOpenAIChatRequest(req *ai.ChatRequest) OpenAIChatRequest {
 	for _, m := range req.Messages {
 		oam := OpenAIMessage{
 			Role:             m.Role,
-			Content:          m.Content,
 			ReasoningContent: m.ReasoningContent,
-			Images:           m.Images,
 			ToolCallID:       m.ToolCallID,
+		}
+
+		if len(m.Images) > 0 || len(m.Audio) > 0 {
+			// Populate structured Content parts
+			parts := make([]map[string]interface{}, 0, len(m.Images)+len(m.Audio)+1)
+			if m.Content != "" {
+				parts = append(parts, map[string]interface{}{
+					"type": "text",
+					"text": m.Content,
+				})
+			}
+			for _, img := range m.Images {
+				parts = append(parts, map[string]interface{}{
+					"type": "image_url",
+					"image_url": map[string]interface{}{
+						"url": img,
+					},
+				})
+			}
+			for _, aud := range m.Audio {
+				// Detect format from Data URL prefix
+				format := "mp3" // Default
+				data := aud
+				if strings.HasPrefix(aud, "data:") {
+					if commaIdx := strings.Index(aud, ","); commaIdx != -1 {
+						prefix := aud[:commaIdx]
+						data = aud[commaIdx+1:]
+						if strings.Contains(prefix, "wav") {
+							format = "wav"
+						} else if strings.Contains(prefix, "ogg") || strings.Contains(prefix, "opus") {
+							format = "opus"
+						}
+					}
+				}
+				parts = append(parts, map[string]interface{}{
+					"type": "input_audio",
+					"input_audio": map[string]interface{}{
+						"data":   data,
+						"format": format,
+					},
+				})
+			}
+			oam.Content = parts
+
+		} else {
+			oam.Content = m.Content
 		}
 
 		if len(m.ToolCalls) > 0 {
