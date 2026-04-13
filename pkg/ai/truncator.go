@@ -670,3 +670,33 @@ func (h *AutomaticMemoryHook) OnChatRequest(ctx context.Context, req *ChatReques
 
 	return nil
 }
+
+// ThinkingTruncator strips reasoning content (thinking) from all but the last assistant message.
+type ThinkingTruncator struct{}
+
+func (t *ThinkingTruncator) Apply(messages []Message) ([]Message, int) {
+	lastAssistantWithThinkingIdx := -1
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role == MessageRoleAssistant && messages[i].ReasoningContent != "" {
+			lastAssistantWithThinkingIdx = i
+			break
+		}
+	}
+
+	if lastAssistantWithThinkingIdx == -1 {
+		return messages, 0
+	}
+
+	modifiedCount := 0
+	result := make([]Message, len(messages))
+	for i, msg := range messages {
+		if i != lastAssistantWithThinkingIdx && msg.ReasoningContent != "" {
+			msg.ReasoningContent = ""
+			modifiedCount++
+			fmt.Printf("[ThinkingTruncator] Stripped thinking from message %d (role: %s)\n", i, msg.Role)
+		}
+		result[i] = msg
+	}
+
+	return result, 0
+}
