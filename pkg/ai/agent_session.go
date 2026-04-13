@@ -252,6 +252,16 @@ func (a *AgentSession) GetContext() context.Context {
 func (a *AgentSession) SendUserMessage(ctx context.Context, msg string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+
+	// If the last message is already a User message with the same content,
+	// just trigger the response without adding it again.
+	if lastIdx := len(a.rec.Messages) - 1; lastIdx >= 0 {
+		last := a.rec.Messages[lastIdx]
+		if last.Role == MessageRoleUser && last.Content == msg {
+			return a.streamChat(ctx)
+		}
+	}
+
 	a.rec.AddMessage(MessageRoleUser, msg)
 	// Apply truncation if configured (must run while locked)
 	a.applyTruncationLocked()
