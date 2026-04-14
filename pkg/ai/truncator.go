@@ -700,3 +700,98 @@ func (t *ThinkingTruncator) Apply(messages []Message) ([]Message, int) {
 
 	return result, 0
 }
+
+// RoundTruncator groups messages into rounds (starting with a User message)
+// and preserves only the original User query and the final Assistant response
+// for older rounds when the total message count exceeds a threshold.
+type RoundTruncator struct {
+	Threshold int // Minimum total messages before truncation kicks in
+}
+
+func (r *RoundTruncator) Apply(messages []Message) ([]Message, int) {
+	if len(messages) <= r.Threshold {
+		return messages, 0
+	}
+
+	result := make([]Message, 0, len(messages))
+
+	// 1. Keep all system messages (usually at the beginning)
+	for _, msg := range messages {
+		if msg.Role == MessageRoleSystem {
+			result = append(result, msg)
+		}
+	}
+
+	// 2. Identify rounds (starting with a User message)
+	type round struct {
+		startIndex int
+		endIndex   int // inclusive
+	}
+	rounds := make([]round, 0)
+	var currentRound *round
+	for i, msg := range messages {
+		if msg.Role == MessageRoleSystem {
+			continue
+		}
+		if msg.Role == MessageRoleUser {
+			if currentRound != nil {
+				currentRound.endIndex = i - 1
+				rounds = append(rounds, *currentRound)
+			}
+			currentRound = &round{startIndex: i}
+		}
+	}
+	if currentRound != nil {
+		currentRound.endIndex = len(messages) - 1
+		rounds = append(rounds, *currentRound)
+	}
+
+	// Always keep the last 2 rounds fully intact.
+	keepRoundsCount := 2
+	if len(rounds) <= keepRoundsCount {
+		// Just append all non-system messages as they were
+		for _, msg := range messages {
+			if msg.Role != MessageRoleSystem {
+				result = append(result, msg)
+			}
+		}
+		return result, 0
+	}
+
+	// 3. Process rounds
+	for ri, rnd := range rounds {
+		// Latest rounds: keep entirely
+		if ri >= len(rounds)-keepRoundsCount {
+			for i := rnd.startIndex; i <= rnd.endIndex; i++ {
+				result = append(result, messages[i])
+			}
+			continue
+		}
+
+		// Older rounds: keep User query + final Assistant response
+		// Keep User query
+		result = append(result, messages[rnd.startIndex])
+
+		// Find and keep the last Assistant response specifically
+		lastAssistantIdx := -1
+		for i := rnd.endIndex; i > rnd.startIndex; i-- {
+			if messages[i].Role == MessageRoleAssistant {
+				lastAssistantIdx = i
+				break
+			}
+		}
+
+		if lastAssistantIdx != -1 {
+			msg := messages[lastAssistantIdx]
+			msg.ToolCalls = nil // Results are gone, so clear tool calls
+			result = append(result, msg)
+		}
+	}
+
+	removedCount := len(messages) - len(result)
+	if removedCount > 0 {
+		fmt.Printf("[RoundTruncator] Truncated history from %d to %d messages\n", len(messages), len(result))
+	}
+
+	return result, removedCount
+}
