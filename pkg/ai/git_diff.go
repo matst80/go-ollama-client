@@ -124,7 +124,8 @@ func (d *DefaultOperationHandler) handleFuzzyApply(ctx context.Context, repoRoot
 	// --- a/path
 	// +++ b/path
 	// ...hunk...
-	reFile := regexp.MustCompile(`(?m)^--- (?:a/)?([^\s\t\n]+)\n\+\+\+ (?:b/)?([^\s\t\n]+)`)
+	// We handle optional leading spaces and both \n and \r\n
+	reFile := regexp.MustCompile(`(?m)^[ \t]*--- (?:a/)?([^\s\t\n\r]+)[\r]*\n[ \t]*\+\+\+ (?:b/)?([^\s\t\n\r]+)`)
 	indices := reFile.FindAllStringIndex(content, -1)
 
 	if len(indices) == 0 {
@@ -173,6 +174,13 @@ func (d *DefaultOperationHandler) handleFuzzyApply(ctx context.Context, repoRoot
 		original, err := os.ReadFile(absPath)
 		if err != nil {
 			if os.IsNotExist(err) {
+				// We only allow creating a file if it looks like a creation diff 
+				// (using /dev/null or if it was explicitly requested).
+				// For fuzzy matching, we'll be conservative.
+				if !strings.Contains(fh.hunk, "/dev/null") {
+					failures = append(failures, fmt.Sprintf("%s (file does not exist and no /dev/null header found)", fh.path))
+					continue
+				}
 				original = []byte("")
 			} else {
 				failures = append(failures, fmt.Sprintf("%s (read error: %v)", fh.path, err))
@@ -184,16 +192,26 @@ func (d *DefaultOperationHandler) handleFuzzyApply(ctx context.Context, repoRoot
 		// If missing, we prepend a dummy one.
 		// Filter to keep only diff lines (@@, +, -, or space)
 		// and strip git headers that go-diff might not like.
-		lines := strings.Split(fh.hunk, "\n")
+		lines := strings.Split(strings.TrimRight(fh.hunk, "\n"), "\n")
 		var filtered []string
 		hasHeader := false
 		for _, line := range lines {
-			if strings.HasPrefix(line, "@@") {
+			// Trim any trailing \r
+			line = strings.TrimRight(line, "\r")
+			
+			trimmed := strings.TrimLeft(line, " \t")
+			// Skip file headers (--- and +++)
+			if strings.HasPrefix(trimmed, "---") || strings.HasPrefix(trimmed, "+++") {
+				continue
+			}
+			
+			if strings.HasPrefix(trimmed, "@@") {
 				hasHeader = true
-				filtered = append(filtered, line)
-			} else if (strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++")) ||
-				(strings.HasPrefix(line, "-") && !strings.HasPrefix(line, "---")) ||
-				strings.HasPrefix(line, " ") {
+				filtered = append(filtered, line) // Keep original line for @@
+			} else if strings.HasPrefix(trimmed, "+") ||
+				strings.HasPrefix(trimmed, "-") ||
+				strings.HasPrefix(line, " ") ||
+				line == "" { 
 				filtered = append(filtered, line)
 			}
 		}

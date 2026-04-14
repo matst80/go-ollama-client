@@ -55,7 +55,26 @@ func (p *FenceParser) ParseBlocks(ctx context.Context, res *AccumulatedResponse)
 		}
 
 		bodyAndTail := input[newlineOffset+1:]
-		endOffset := strings.Index(bodyAndTail, "```")
+		
+		// Attempt to find the end of the block.
+		// A closing fence should ideally be at the start of a line.
+		var endOffset int
+		searchFrom := 0
+		for {
+			idx := strings.Index(bodyAndTail[searchFrom:], "```")
+			if idx == -1 {
+				endOffset = -1
+				break
+			}
+			actualIdx := searchFrom + idx
+			// Check if at start of content or after a newline
+			if actualIdx == 0 || bodyAndTail[actualIdx-1] == '\n' {
+				endOffset = actualIdx
+				break
+			}
+			searchFrom = actualIdx + 3
+		}
+
 		if endOffset == -1 {
 			isDone := res.Chunk.BaseResponse != nil && res.Chunk.Done
 			if isDone || p.EmitFragments {

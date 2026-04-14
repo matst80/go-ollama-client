@@ -39,6 +39,7 @@ func TestGitDiffBlockHandler_AppliesUnifiedDiff(t *testing.T) {
 
 	block := &StreamedBlock{
 		Type: "diff",
+		Done: true,
 		Content: strings.Join([]string{
 			"--- a/main.go",
 			"+++ b/main.go",
@@ -95,6 +96,7 @@ func TestGitDiffBlockHandler_FailsForInvalidPatch(t *testing.T) {
 
 	block := &StreamedBlock{
 		Type: "diff",
+		Done: true,
 		Content: strings.Join([]string{
 			"--- a/does-not-exist.go",
 			"+++ b/does-not-exist.go",
@@ -126,6 +128,7 @@ func TestGitDiffBlockHandler_CreatesNewFile(t *testing.T) {
 
 	block := &StreamedBlock{
 		Type: "diff",
+		Done: true,
 		Content: strings.Join([]string{
 			"diff --git a/docs/example.txt b/docs/example.txt",
 			"new file mode 100644",
@@ -183,6 +186,7 @@ func TestGitDiffBlockHandler_ProducesReportThroughDiffParser(t *testing.T) {
 
 	block := &StreamedBlock{
 		Type: "diff",
+		Done: true,
 		Content: strings.Join([]string{
 			"--- a/main.go",
 			"+++ b/main.go",
@@ -287,3 +291,45 @@ func TestGitDiffBlockHandler_CreatesDirectoriesAutomatically(t *testing.T) {
 		t.Fatalf("unexpected content: %q", string(got))
 	}
 }
+
+func TestDefaultOperationHandler_FuzzyApplyRobustness(t *testing.T) {
+	tmp := t.TempDir()
+
+	mainPath := filepath.Join(tmp, "main.go")
+	original := "package main\r\n\r\nfunc main() {\r\n\t// first line\r\n\t// second line\r\n}\r\n"
+	if err := os.WriteFile(mainPath, []byte(original), 0o644); err != nil {
+		t.Fatalf("write seed file failed: %v", err)
+	}
+
+	handler := &DefaultOperationHandler{}
+
+	// Test Case 1: CRLF line endings in diff + Indented headers + Missing context spaces
+	// The diff is "lazy" (no @@) and has \r\n explicitly
+	content := "   --- a/main.go\r\n   +++ b/main.go\r\n" +
+		" \t// first line\r\n" +
+		"\r\n" + // Empty line with NO space (missing context space)
+		"- \t// second line\r\n" +
+		"+ \t// patched line\r\n"
+
+	block := &DiffOperation{
+		Content: content,
+	}
+
+	res := handler.HandleDiff(context.Background(), tmp, block)
+	if !res.Success {
+		t.Fatalf("Fuzzy apply failed: %s", res.Message)
+	}
+
+	got, err := os.ReadFile(mainPath)
+	if err != nil {
+		t.Fatalf("reading patched file failed: %v", err)
+	}
+
+	// The fuzzy matcher might have changed \r\n to \n depending on implementation, 
+	// but the content should be correct.
+	gotStr := strings.ReplaceAll(string(got), "\r\n", "\n")
+	if !strings.Contains(gotStr, "// patched line") {
+		t.Fatalf("patched file missing new logic in %q", string(got))
+	}
+}
+

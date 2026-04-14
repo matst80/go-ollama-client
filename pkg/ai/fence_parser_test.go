@@ -286,3 +286,41 @@ func TestFenceParser_IgnoresProseBeforeAndAfterFence(t *testing.T) {
 		t.Fatalf("unexpected parsed content: %q", blocks[0].Content)
 	}
 }
+
+func TestFenceParser_BackticksInsideBlockContent(t *testing.T) {
+	p := NewFenceParser()
+	ctx := context.Background()
+
+	content := strings.Join([]string{
+		"```diff",
+		"--- a/README.md",
+		"+++ b/README.md",
+		"@@ -1,3 +1,3 @@",
+		" Here is code:",
+		"-```go",
+		"+```js",
+		" fmt.Println(\"hi\")",
+		"```",
+	}, "\n")
+
+	res := &AccumulatedResponse{
+		Chunk: &ChatResponse{
+			Message: Message{Content: content},
+		},
+	}
+
+	blocks, err := p.ParseBlocks(ctx, res)
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	if len(blocks) != 1 {
+		t.Fatalf("expected 1 block, got %d", len(blocks))
+	}
+
+	// The content should include everything between the fences,
+	// including the inner backticks because they are not at the start of the line alone.
+	expectedContent := "--- a/README.md\n+++ b/README.md\n@@ -1,3 +1,3 @@\n Here is code:\n-```go\n+```js\n fmt.Println(\"hi\")\n"
+	if blocks[0].Content != expectedContent {
+		t.Fatalf("unexpected content:\n%q\nexpected:\n%q", blocks[0].Content, expectedContent)
+	}
+}
