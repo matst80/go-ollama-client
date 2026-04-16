@@ -32,6 +32,10 @@ type SessionHooks interface {
 	// OnDone is called when the chat turn is completely finished.
 	OnDone(ctx context.Context, res AccumulatedResponse)
 
+	// OnFlush is called when the current stream should be flushed to the UI
+	// even if the turn is not finished.
+	OnFlush(ctx context.Context)
+
 	// OnError is called when an error occurs during the session (e.g., API failure).
 	OnError(ctx context.Context, err error)
 }
@@ -50,7 +54,8 @@ func (h *DefaultSessionHooks) OnAfterToolCall(ctx context.Context, toolCalls []T
 }
 func (h *DefaultSessionHooks) OnBlock(ctx context.Context, blockType string, content string) {}
 func (h *DefaultSessionHooks) OnDone(ctx context.Context, res AccumulatedResponse)           {}
-func (h *DefaultSessionHooks) OnError(ctx context.Context, err error)                        {}
+func (h *DefaultSessionHooks) OnFlush(ctx context.Context)                          {}
+func (h *DefaultSessionHooks) OnError(ctx context.Context, err error)                       {}
 
 
 // ChatClientInterface defines a minimal, testable abstraction over the concrete

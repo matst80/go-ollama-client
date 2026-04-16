@@ -227,6 +227,10 @@ func (r *AgentRegistry) SpawnAgent(ctx context.Context, typeName string, instanc
 	state.SetType(typeName)
 
 	session := agentDef.spawnFunction(ctx, content, state)
+	if session == nil {
+		r.mu.Unlock()
+		return nil, fmt.Errorf("agent %s spawn function returned nil", typeName)
+	}
 
 	r.agents[instanceID] = session
 	r.mu.Unlock()
